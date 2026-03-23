@@ -3344,7 +3344,38 @@ function draw() {
            ctx.fillRect(drawX + 20, drawY + 18, 2, 2);
            ctx.fillRect(drawX + 4, drawY + 22, 2, 2);
         }
+        // Draw minimap boundary strokes for explored/unexplored neighbors
+        try {
+          const ex = x, ey = y;
+          const north = (ey - 1 >= 0) && explored[ey - 1] && explored[ey - 1][ex];
+          const east = (ex + 1 < MAP_SIZE) && explored[ey] && explored[ey][ex + 1];
+          const south = (ey + 1 < MAP_SIZE) && explored[ey + 1] && explored[ey + 1][ex];
+          const west = (ex - 1 >= 0) && explored[ey] && explored[ey][ex - 1];
 
+          const pTop = { x: cxTile, y: cyTile - halfH };
+          const pRight = { x: cxTile + halfW, y: cyTile };
+          const pBottom = { x: cxTile, y: cyTile + halfH };
+          const pLeft = { x: cxTile - halfW, y: cyTile };
+
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.lineWidth = 1.6;
+          ctx.lineCap = 'round';
+          ctx.shadowBlur = 6;
+          ctx.shadowColor = 'rgba(0,0,0,0.45)';
+
+          // North neighbor not explored -> draw top->right edge
+          if (!north) { ctx.beginPath(); ctx.moveTo(pTop.x, pTop.y); ctx.lineTo(pRight.x, pRight.y); ctx.stroke(); }
+          // East neighbor not explored -> draw right->bottom edge
+          if (!east)  { ctx.beginPath(); ctx.moveTo(pRight.x, pRight.y); ctx.lineTo(pBottom.x, pBottom.y); ctx.stroke(); }
+          // South neighbor not explored -> draw bottom->left edge
+          if (!south) { ctx.beginPath(); ctx.moveTo(pBottom.x, pBottom.y); ctx.lineTo(pLeft.x, pLeft.y); ctx.stroke(); }
+          // West neighbor not explored -> draw left->top edge
+          if (!west)  { ctx.beginPath(); ctx.moveTo(pLeft.x, pLeft.y); ctx.lineTo(pTop.x, pTop.y); ctx.stroke(); }
+
+          ctx.restore();
+        } catch (e) {}
+      }
       } else {
         ctx.fillStyle = "#111"; 
         ctx.fillRect(drawX, drawY, TILE, TILE);
@@ -3362,10 +3393,38 @@ function draw() {
   }
 
   if (!inDungeon) {
-    ctx.fillStyle = "#000"; ctx.beginPath();
     const entr = worldToIso(world.entrance.x, world.entrance.y);
-    ctx.arc(entr.x, entr.y, 35, 0, Math.PI*2);
-    ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+    // Angled, isometric-looking entrance: use an ellipse with shading to appear sunk into the floor
+    ctx.save();
+    ctx.translate(entr.x, entr.y);
+    // Slight rotation to align with isometric perspective
+    const rot = -Math.PI / 8;
+    ctx.rotate(rot);
+    // Draw rim
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 46, 20, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#050505';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.stroke();
+
+    // Inner shadow / depth: darker inside with radial gradient offset to suggest depth
+    const grad = ctx.createRadialGradient(-6, -4, 4, 0, 0, 36);
+    grad.addColorStop(0, 'rgba(20,20,20,0.0)');
+    grad.addColorStop(0.5, 'rgba(0,0,0,0.45)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.95)');
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 38, 16, 0, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Add a faint rim highlight at top-left to emphasize angle
+    ctx.beginPath();
+    ctx.ellipse(-12, -6, 30, 10, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fill();
+    ctx.restore();
   }
 
  // PLAYER - Animated energy orb with swirling blue energy
@@ -3991,6 +4050,20 @@ ctx.restore();
       if (!explored[y][x]) continue;
       const cxTile = baseX + (x - y) * mmHalfW;
       const cyTile = baseY + (x + y) * mmHalfH;
+
+      // translucent discovered halo slightly larger than tile
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'rgba(0,200,255,0.06)';
+      ctx.beginPath();
+      ctx.moveTo(cxTile, cyTile - halfH * 1.2);
+      ctx.lineTo(cxTile + halfW * 1.2, cyTile);
+      ctx.lineTo(cxTile, cyTile + halfH * 1.2);
+      ctx.lineTo(cxTile - halfW * 1.2, cyTile);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+
+      // main tile fill (wall or floor)
       if (world.grid[y][x] === 1) ctx.fillStyle = b.wall;
       else ctx.fillStyle = adjustColor(b.grass || '#2a2a2a', 0.30, 0.12);
       ctx.beginPath();
@@ -3999,6 +4072,8 @@ ctx.restore();
       ctx.lineTo(cxTile, cyTile + halfH);
       ctx.lineTo(cxTile - halfW, cyTile);
       ctx.closePath(); ctx.fill();
+
+      // subtle texture on explored tile
     }
   }
 
