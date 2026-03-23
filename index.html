@@ -1857,15 +1857,18 @@ const initAudioInteraction = () => {
 window.addEventListener('click', initAudioInteraction);
 window.addEventListener('touchstart', initAudioInteraction);
 
-playBtn.addEventListener('click', () => {
-  console.log('PLAY button clicked');
-  // Normal play button behavior
-  mainBtns.classList.add('hidden');
-  diffBtns.classList.remove('hidden');
-  titleText.style.display = 'none';
-  document.querySelector('.author-sub').style.display = 'none';
-  statsBox.style.display = 'none';
-});
+if (playBtn) {
+  playBtn.addEventListener('click', () => {
+    console.log('PLAY button clicked');
+    // Normal play button behavior
+    mainBtns.classList.add('hidden');
+    diffBtns.classList.remove('hidden');
+    titleText.style.display = 'none';
+    const authorEl = document.querySelector('.author-sub');
+    if (authorEl) authorEl.style.display = 'none';
+    if (statsBox) statsBox.style.display = 'none';
+  });
+}
 
 window.selectDifficulty = (diff) => {
   if (diff === 'custom') {
@@ -2080,6 +2083,7 @@ closeMenuBtn.addEventListener('click', () => {
 });
 
 function updateMiniMenuButtonPosition() {
+  const miniMenuBtn = document.getElementById('mini-menu-btn');
   if (!miniMenuBtn) return;
   if (!canvas) return;
 
@@ -2161,7 +2165,8 @@ toggleSound.addEventListener('click', () => {
 toggleVibration.addEventListener('click', () => {
   vibrationEnabled = !vibrationEnabled;
   toggleVibration.classList.toggle('active');
-  vibBtn.classList.toggle('active', !vibrationEnabled);
+  const vibBtn = document.getElementById('vib-btn');
+  if (vibBtn) vibBtn.classList.toggle('active', !vibrationEnabled);
   if (vibrationEnabled) {
     vibrate(50); // Test vibration
   }
@@ -3404,10 +3409,10 @@ function draw() {
           const south = (ey + 1 < MAP_SIZE) && explored[ey + 1] && explored[ey + 1][ex];
           const west = (ex - 1 >= 0) && explored[ey] && explored[ey][ex - 1];
 
-          const pTop = { x: cxTile, y: cyTile - halfH };
-          const pRight = { x: cxTile + halfW, y: cyTile };
-          const pBottom = { x: cxTile, y: cyTile + halfH };
-          const pLeft = { x: cxTile - halfW, y: cyTile };
+          const pTop = { x: drawX, y: drawY - halfH };
+          const pRight = { x: drawX + halfW, y: drawY };
+          const pBottom = { x: drawX, y: drawY + halfH };
+          const pLeft = { x: drawX - halfW, y: drawY };
 
           ctx.save();
           ctx.strokeStyle = 'rgba(255,255,255,0.9)';
@@ -3734,9 +3739,9 @@ function draw() {
     ctx.restore();
 
     // Boss HP bar
-    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(bx - 52, by - 82, 104, 14);
-    ctx.fillStyle = "#333"; ctx.fillRect(bx - 50, by - 80, 100, 10);
-    ctx.fillStyle = "#ff0000"; ctx.fillRect(bx - 50, by - 80, (world.boss.hp / world.boss.max) * 100, 10);
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(bpos.x - 52, bpos.y - 82, 104, 14);
+    ctx.fillStyle = "#333"; ctx.fillRect(bpos.x - 50, bpos.y - 80, 100, 10);
+    ctx.fillStyle = "#ff0000"; ctx.fillRect(bpos.x - 50, bpos.y - 80, (world.boss.hp / world.boss.max) * 100, 10);
   }
 
   // DRAW SHOTS (positions updated in update(dt))
