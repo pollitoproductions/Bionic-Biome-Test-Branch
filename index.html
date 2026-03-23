@@ -3233,6 +3233,16 @@ function draw() {
 
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Apply a subtle top-down "tilt" so the scene feels slightly 3D from the player's perspective.
+  // This is an affine transform (skew + vertical scale) applied around the canvas center.
+  // It keeps HUD elements untransformed because we restore the context before drawing them.
+  const TILT = 0.28;    // how much horizontal->vertical skew (0 = flat top-down)
+  const SCALE_Y = 0.82; // compress vertical axis slightly to simulate foreshortening
+  ctx.save();
+  ctx.translate(400, 300);
+  ctx.transform(1, -TILT, 0, SCALE_Y, 0, 0);
+  ctx.translate(-400, -300);
+
   let startX = Math.max(0, Math.floor(cx / TILE));
   let endX = Math.min(MAP_SIZE, startX + 27);
   let startY = Math.max(0, Math.floor(cy / TILE));
@@ -3823,6 +3833,9 @@ ctx.restore();
       ctx.restore();
     }
   });
+
+  // restore the untransformed context so HUD/minimap render normally
+  ctx.restore();
 
   // STATS BOX + MINIMAP (unchanged)
   const boxX = 20;
