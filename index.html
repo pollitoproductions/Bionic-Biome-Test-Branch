@@ -3506,15 +3506,29 @@ ctx.restore();
       ctx.fillStyle = `rgba(${eColor.r},${eColor.g},${eColor.b},0.12)`;
       ctx.beginPath(); ctx.ellipse(0, 0, ePulse * 1.1, ePulse * 0.7, 0, 0, Math.PI * 2); ctx.fill();
 
-      // Radial gradient body to look like a 3D sphere
-      const eGrad = ctx.createRadialGradient(-ERAD*0.3, -ERAD*0.5, 0, 0, 0, ERAD);
-      eGrad.addColorStop(0, `rgba(${Math.min(eColor.r+80,255)},${Math.min(eColor.g+80,255)},${Math.min(eColor.b+80,255)},0.95)`);
-      eGrad.addColorStop(0.55, `rgba(${eColor.r},${eColor.g},${eColor.b},0.9)`);
-      eGrad.addColorStop(1, `rgba(${Math.max(eColor.r-40,0)},${Math.max(eColor.g-40,0)},${Math.max(eColor.b-40,0)},0.8)`);
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.7)`;
+      // Cast soft shadow beneath the sphere to sell elevation
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.beginPath(); ctx.ellipse(0, ERAD * 0.9, ERAD * 1.2, ERAD * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      // Radial gradient body to look like a 3D sphere (offset highlight + darker rim)
+      const eGrad = ctx.createRadialGradient(-ERAD*0.35, -ERAD*0.6, 0, 0, 0, ERAD);
+      eGrad.addColorStop(0, `rgba(${Math.min(eColor.r+110,255)},${Math.min(eColor.g+110,255)},${Math.min(eColor.b+110,255)},1)`);
+      eGrad.addColorStop(0.25, `rgba(${Math.min(eColor.r+40,255)},${Math.min(eColor.g+40,255)},${Math.min(eColor.b+40,255)},0.95)`);
+      eGrad.addColorStop(0.6, `rgba(${eColor.r},${eColor.g},${eColor.b},0.92)`);
+      eGrad.addColorStop(1, `rgba(${Math.max(eColor.r-60,0)},${Math.max(eColor.g-60,0)},${Math.max(eColor.b-60,0)},0.85)`);
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = `rgba(0,0,0,0.25)`;
       ctx.fillStyle = eGrad;
-      ctx.beginPath(); ctx.ellipse(0, 0, ERAD, ERAD*0.75, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, ERAD, ERAD*0.8, 0, 0, Math.PI * 2); ctx.fill();
+
+      // Specular highlight (small bright spot)
+      ctx.save();
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.beginPath(); ctx.ellipse(-ERAD*0.45, -ERAD*0.8, ERAD*0.28, ERAD*0.18, 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
 
       // 2 swirling energy arcs
       for (let i = 0; i < 2; i++) {
