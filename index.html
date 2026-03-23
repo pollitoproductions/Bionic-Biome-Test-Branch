@@ -1828,7 +1828,13 @@ function handleCanvasTap(e) {
   if (!startScreen.classList.contains('hidden')) return;
 
   const pos = getCanvasPos(e);
-  const mmX = 650, mmY = 15, mmW = MAP_SIZE, mmH = MAP_SIZE;
+  // Compute minimap bounds the same way draw() does so hit-tests stay in sync
+  const mmPixelW = 180; // matches draw() minimap pixel width
+  const mmS = mmPixelW / MAP_SIZE;
+  const mmW = mmPixelW;
+  const mmH = Math.ceil(MAP_SIZE * mmS);
+  const mmX = Math.max(10, canvas.width - mmW - 10);
+  const mmY = 15;
   const onMinimap = pos.x >= mmX && pos.x <= mmX + mmW && pos.y >= mmY && pos.y <= mmY + mmH;
 
   if (gameActive) {
@@ -1852,6 +1858,7 @@ window.addEventListener('click', initAudioInteraction);
 window.addEventListener('touchstart', initAudioInteraction);
 
 playBtn.addEventListener('click', () => {
+  console.log('PLAY button clicked');
   // Normal play button behavior
   mainBtns.classList.add('hidden');
   diffBtns.classList.remove('hidden');
@@ -1964,7 +1971,12 @@ function updateMiniButtonPositions() {
   const scaleX = rect.width / canvas.width;
   const scaleY = rect.height / canvas.height;
 
-  const mmX = 650;
+  // Compute minimap bounds to align button positions with the drawn minimap
+  const mmPixelW = 180;
+  const mmS = mmPixelW / MAP_SIZE;
+  const mmW = mmPixelW;
+  const mmH = Math.ceil(MAP_SIZE * mmS);
+  const mmX = Math.max(10, canvas.width - mmW - 10);
   const mmY = 15;
   const btnSize = 34;
   const padding = 4;
@@ -2075,8 +2087,12 @@ function updateMiniMenuButtonPosition() {
   const scaleX = rect.width / canvas.width;
   const scaleY = rect.height / canvas.height;
 
-  // Minimap is drawn at (650, 15) in canvas coords, with size MAP_SIZE.
-  const mmX = 650;
+  // Compute minimap position the same way draw() does so button aligns correctly
+  const mmPixelW = 180;
+  const mmS = mmPixelW / MAP_SIZE;
+  const mmW = mmPixelW;
+  const mmH = Math.ceil(MAP_SIZE * mmS);
+  const mmX = Math.max(10, canvas.width - mmW - 10);
   const mmY = 15;
   const btnSize = 44;
   const padding = 6;
@@ -2794,8 +2810,9 @@ function update(dt) {
 
   // Mark explored
   let tx = Math.floor(player.x / TILE), ty = Math.floor(player.y / TILE);
-  for (let y = ty - 4; y <= ty + 4; y++) {
-    for (let x = tx - 4; x <= tx + 4; x++) {
+  // Increase discovery radius so explored area feels larger on the tilted view
+  for (let y = ty - 6; y <= ty + 6; y++) {
+    for (let x = tx - 6; x <= tx + 6; x++) {
       if (x >= 0 && y >= 0 && x < MAP_SIZE && y < MAP_SIZE) explored[y][x] = true;
     }
   }
@@ -3233,34 +3250,81 @@ function draw() {
 
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Use an isometric-ish projection from a corner (45deg rotation) so the view
+  // feels like looking from a room corner. We convert world pixel coordinates
+  // into screen positions per-object instead of transforming the whole canvas.
+  function worldToIso(wx, wy) {
+    const tx = wx / TILE, ty = wy / TILE;
+    // Steeper vertical scale so camera peers down at ~45deg; not perfectly square
+    const isoScaleX = TILE / 2; // horizontal half-width of a diamond
+    const isoScaleY = TILE / 3; // taller vertical scale for stronger 3D feel
+    const isoX = (tx - ty) * isoScaleX;
+    const isoY = (tx + ty) * isoScaleY;
+    const pTx = player.x / TILE, pTy = player.y / TILE;
+    const pIsoX = (pTx - pTy) * isoScaleX;
+    const pIsoY = (pTx + pTy) * isoScaleY;
+    // Shift camera toward top-right corner so player appears from a corner-perspective
+    const camX = Math.round(canvas.width * 0.35);
+    const camY = Math.round(canvas.height * 0.55);
+    return { x: camX + isoX - pIsoX, y: camY + isoY - pIsoY };
+  }
   let startX = Math.max(0, Math.floor(cx / TILE));
   let endX = Math.min(MAP_SIZE, startX + 27);
   let startY = Math.max(0, Math.floor(cy / TILE));
   let endY = Math.min(MAP_SIZE, startY + 20);
 
+  // Collect visible tiles then draw them in correct depth order (by x+y)
+  const tiles = [];
   for (let y = startY; y < endY; y++) {
     for (let x = startX; x < endX; x++) {
-      let drawX = x * TILE - cx;
-      let drawY = y * TILE - cy;
+      tiles.push({ x, y, t: world.grid[y][x] });
+    }
+  }
+  tiles.sort((a, c) => (a.x + a.y) - (c.x + c.y));
 
-      if (world.grid[y][x] === 1) {
-        ctx.fillStyle = wallColor; 
-        ctx.fillRect(drawX, drawY, TILE, TILE);
-        
-        ctx.fillStyle = "rgba(255,255,255,0.2)";
-        ctx.fillRect(drawX, drawY, TILE, 4);
-        ctx.fillRect(drawX, drawY, 4, TILE);
-        ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.fillRect(drawX + TILE - 4, drawY, 4, TILE);
-        ctx.fillRect(drawX, drawY + TILE - 4, TILE, 4);
-        
-        ctx.strokeStyle = b.wallEdge; 
-        ctx.strokeRect(drawX, drawY, TILE, TILE);
+  const halfW = TILE / 2, halfH = TILE / 3;
+  for (let tile of tiles) {
+    const x = tile.x, y = tile.y;
+    const center = worldToIso((x + 0.5) * TILE, (y + 0.5) * TILE);
+    const drawX = center.x, drawY = center.y;
 
-      } else if (!inDungeon) {
-        ctx.fillStyle = grassColor; 
-        ctx.fillRect(drawX, drawY, TILE, TILE);
-        
+    // diamond corners
+    const p1 = { x: drawX, y: drawY - halfH };
+    const p2 = { x: drawX + halfW, y: drawY };
+    const p3 = { x: drawX, y: drawY + halfH };
+    const p4 = { x: drawX - halfW, y: drawY };
+
+    // Darken unexplored tiles; keep explored tiles lit like the minimap
+    const exploredTile = explored[y] && explored[y][x];
+    if (tile.t === 1) {
+      // wall tile: draw as a raised 1x1x1 block (isometric cube)
+      const H = TILE * 0.6; // cube height in pixels (taller for stronger 3D)
+      const p1t = { x: p1.x, y: p1.y - H };
+      const p2t = { x: p2.x, y: p2.y - H };
+      const p3t = { x: p3.x, y: p3.y - H };
+      const p4t = { x: p4.x, y: p4.y - H };
+
+      // Top face (lighter)
+      ctx.fillStyle = exploredTile ? adjustColor(wallColor, 0.14, 0.05) : adjustColor(wallColor, -0.18, -0.2);
+      ctx.beginPath(); ctx.moveTo(p1t.x, p1t.y); ctx.lineTo(p2t.x, p2t.y); ctx.lineTo(p3t.x, p3t.y); ctx.lineTo(p4t.x, p4t.y); ctx.closePath(); ctx.fill();
+
+      // Left face
+      ctx.fillStyle = exploredTile ? adjustColor(wallColor, -0.10, -0.05) : "#0b0b0b";
+      ctx.beginPath(); ctx.moveTo(p4t.x, p4t.y); ctx.lineTo(p1t.x, p1t.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+
+      // Right face
+      ctx.fillStyle = exploredTile ? adjustColor(wallColor, -0.22, -0.08) : "#050505";
+      ctx.beginPath(); ctx.moveTo(p1t.x, p1t.y); ctx.lineTo(p2t.x, p2t.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p1.x, p1.y); ctx.closePath(); ctx.fill();
+
+      // Outline
+      ctx.strokeStyle = b.wallEdge; ctx.lineWidth = 1; ctx.stroke();
+
+    } else if (!inDungeon) {
+      // Floor tile: show brightened grass when explored, dark when not
+      ctx.fillStyle = exploredTile ? grassColor : "rgba(10,10,12,0.9)";
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+      if (exploredTile) {
+>>>>>>> dddf998 (Isometric corner camera, 45° tilt, persistent exploration lighting, arrow rotation fix)
         let noise = ((x * 13 + y * 23) % 10) / 10;
         if (noise > 0.6) {
            ctx.fillStyle = "rgba(0,0,0,0.1)";
@@ -3642,10 +3706,17 @@ ctx.restore();
     const shaftColor = b.wpnShaft || "#bdc3c7";
     const headColor = b.wpnHead || "#dfeef6";
     const glowColor = b.wpnGlow || "#00e6ff";
-    
-    let ang = Math.atan2(s.dy, s.dx);
+
+    // Compute arrow rotation in screen space so it visually points along its projected travel direction
+    // Must match the worldToIso scale: isoScaleX = TILE/2, isoScaleY = TILE/3
+    const scaleX = (TILE / 2) / TILE; // 0.5
+    const scaleY = (TILE / 3) / TILE; // ~0.3333
+    const screenDx = (s.dx - s.dy) * scaleX;
+    const screenDy = (s.dx + s.dy) * scaleY;
+    let ang = Math.atan2(screenDy, screenDx);
+    const screen = worldToIso(s.x, s.y);
     ctx.save();
-    ctx.translate(s.x - cx, s.y - cy);
+    ctx.translate(screen.x, screen.y - 4);
     ctx.rotate(ang);
 
     // Draw glow outline first for visibility
@@ -3898,18 +3969,26 @@ ctx.restore();
   }
   ctx.strokeRect(mmX, mmY, mmW, mmH);
   ctx.shadowBlur = 0;
-  
+
+  // Draw isometric tiles on minimap (only explored tiles are visible)
+  const halfW = mmS / 2;
+  const halfH = mmS / 3; // match worldToIso vertical scale for consistent perspective
+  const baseX = mmX + mmW / 2;
+  const baseY = mmY + 12; // small top padding
+
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
-      if (explored[y][x]) {
-        if (world.grid[y][x] === 1) {
-          ctx.fillStyle = b.wall;
-        } else {
-          // Brighten explored floor tiles more for improved visibility on the minimap
-          ctx.fillStyle = adjustColor(b.grass || '#2a2a2a', 0.30, 0.12);
-        }
-        ctx.fillRect(mmX + x * mmS, mmY + y * mmS, mmS, mmS);
-      }
+      if (!explored[y][x]) continue;
+      const cxTile = baseX + (x - y) * halfW;
+      const cyTile = baseY + (x + y) * halfH;
+      if (world.grid[y][x] === 1) ctx.fillStyle = b.wall;
+      else ctx.fillStyle = adjustColor(b.grass || '#2a2a2a', 0.30, 0.12);
+      ctx.beginPath();
+      ctx.moveTo(cxTile, cyTile - halfH);
+      ctx.lineTo(cxTile + halfW, cyTile);
+      ctx.lineTo(cxTile, cyTile + halfH);
+      ctx.lineTo(cxTile - halfW, cyTile);
+      ctx.closePath(); ctx.fill();
     }
   }
 
@@ -3917,16 +3996,18 @@ ctx.restore();
     let ex = Math.floor(world.entrance.x / TILE);
     let ey = Math.floor(world.entrance.y / TILE);
     if (explored[ey] && explored[ey][ex]) {
-        ctx.fillStyle = b.enemy;
-        ctx.beginPath();
-        ctx.arc(mmX + ex * mmS, mmY + ey * mmS, 3, 0, Math.PI*2);
-        ctx.fill();
+      const enIsoX = baseX + (ex - ey) * halfW;
+      const enIsoY = baseY + (ex + ey) * halfH;
+      ctx.fillStyle = b.enemy;
+      ctx.beginPath(); ctx.arc(enIsoX, enIsoY, 4, 0, Math.PI*2); ctx.fill();
     }
   }
 
-  ctx.fillStyle = "#00ffff"; ctx.beginPath();
-  ctx.arc(mmX + (player.x / TILE) * mmS, mmY + (player.y / TILE) * mmS, 2.5, 0, Math.PI*2);
-  ctx.fill(); ctx.globalAlpha = 1.0;
+  // Draw player on minimap (projected)
+  const pTileX = player.x / TILE, pTileY = player.y / TILE;
+  const pIsoX = baseX + (pTileX - pTileY) * halfW;
+  const pIsoY = baseY + (pTileX + pTileY) * halfH;
+  ctx.fillStyle = "#00ffff"; ctx.beginPath(); ctx.arc(pIsoX, pIsoY, 3.5, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1.0;
 }
 
 /* === MAIN LOOP: compute dt and pass to update === */
