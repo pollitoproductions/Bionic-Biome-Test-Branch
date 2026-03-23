@@ -3240,7 +3240,10 @@ function draw() {
   }
 
   const b = biomes[(biomeLevel - 1) % biomes.length];
-  let cx = player.x - 400, cy = player.y - 300;
+  // Camera center (use canvas center so worldToIso aligns with player drawing)
+  const centerX = Math.round(canvas.width / 2);
+  const centerY = Math.round(canvas.height / 2);
+  let cx = player.x - centerX, cy = player.y - centerY;
 
   // Choose brighter base colors for the overworld (before entering dungeon)
   const overworldBrighten = 0.10; // increase lightness for overworld
@@ -3263,9 +3266,9 @@ function draw() {
     const pTx = player.x / TILE, pTy = player.y / TILE;
     const pIsoX = (pTx - pTy) * isoScaleX;
     const pIsoY = (pTx + pTy) * isoScaleY;
-    // Shift camera toward top-right corner so player appears from a corner-perspective
-    const camX = Math.round(canvas.width * 0.35);
-    const camY = Math.round(canvas.height * 0.55);
+    // Center camera on canvas so world coordinates line up with player sprite
+    const camX = Math.round(canvas.width / 2);
+    const camY = Math.round(canvas.height / 2);
     return { x: camX + isoX - pIsoX, y: camY + isoY - pIsoY };
   }
   let startX = Math.max(0, Math.floor(cx / TILE));
@@ -3299,10 +3302,12 @@ function draw() {
     if (tile.t === 1) {
       // wall tile: draw as a raised 1x1x1 block (isometric cube)
       const H = TILE * 0.6; // cube height in pixels (taller for stronger 3D)
-      const p1t = { x: p1.x, y: p1.y - H };
-      const p2t = { x: p2.x, y: p2.y - H };
-      const p3t = { x: p3.x, y: p3.y - H };
-      const p4t = { x: p4.x, y: p4.y - H };
+      // Slight top-face overlap to avoid visible seams where two blocks meet
+      const OVERLAP = 0.75; // pixels
+      const p1t = { x: p1.x, y: p1.y - H - OVERLAP };
+      const p2t = { x: p2.x, y: p2.y - H - OVERLAP };
+      const p3t = { x: p3.x, y: p3.y - H - OVERLAP };
+      const p4t = { x: p4.x, y: p4.y - H - OVERLAP };
 
       // Top face (lighter)
       ctx.fillStyle = exploredTile ? adjustColor(wallColor, 0.14, 0.05) : adjustColor(wallColor, -0.18, -0.2);
@@ -3353,13 +3358,14 @@ function draw() {
 
   if (!inDungeon) {
     ctx.fillStyle = "#000"; ctx.beginPath();
-    ctx.arc(world.entrance.x - cx, world.entrance.y - cy, 35, 0, Math.PI*2);
+    const entr = worldToIso(world.entrance.x, world.entrance.y);
+    ctx.arc(entr.x, entr.y, 35, 0, Math.PI*2);
     ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
   }
 
  // PLAYER - Animated energy orb with swirling blue energy
 ctx.save();
-ctx.translate(400, 300);
+ctx.translate(centerX, centerY);
 
 // Outer glow pulse (reduced shadow for iOS)
 const time = Date.now() / 1000;
@@ -3468,10 +3474,10 @@ ctx.restore();
     ctx.lineWidth = 24;
     ctx.lineCap = 'round';
     ctx.globalAlpha = 0.4 * swingProgress;
-    ctx.beginPath();
-    ctx.arc(400, 300, PLAYER_RAD + 25, 
-            player.dir - swingAngle, 
-            player.dir + swingAngle);
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, PLAYER_RAD + 25, 
+          player.dir - swingAngle, 
+          player.dir + swingAngle);
     ctx.stroke();
     ctx.globalAlpha = 1.0;
     
@@ -3487,8 +3493,8 @@ ctx.restore();
       ctx.lineWidth = 18 - i * 4;
       ctx.lineCap = 'round';
       
-      ctx.beginPath();
-      ctx.arc(400, 300, PLAYER_RAD + 25 + i * 5, 
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, PLAYER_RAD + 25 + i * 5, 
               player.dir - swingAngle + offset, 
               player.dir + swingAngle - offset);
       ctx.stroke();
@@ -3506,7 +3512,7 @@ ctx.restore();
     const tipEnd = player.dir + swingAngle;
     
     ctx.beginPath();
-    ctx.arc(400, 300, tipRadius, tipStart, tipEnd);
+    ctx.arc(centerX, centerY, tipRadius, tipStart, tipEnd);
     ctx.stroke();
     
     ctx.restore();
@@ -3516,10 +3522,10 @@ ctx.restore();
   const eTime = Date.now() / 1000;
   const eColor = hexToRgb(b.enemy);
   world.enemies.forEach((e, ei) => {
-    const ex = e.x - cx, ey = e.y - cy;
+    const exy = worldToIso(e.x, e.y);
     const ERAD = 14;
     ctx.save();
-    ctx.translate(ex, ey);
+    ctx.translate(exy.x, exy.y);
 
     if (e.hitTimer > 0) {
       // Hit flash — bright white burst
@@ -3598,11 +3604,11 @@ ctx.restore();
 
   // --- DYNAMIC BOSS RENDERING ---
   if (inDungeon && world.boss) {
-    const bx = world.boss.x - cx, by = world.boss.y - cy;
+    const bpos = worldToIso(world.boss.x, world.boss.y);
     const BRAD = 50;
     const bossColor = hexToRgb(b.enemy);
     ctx.save();
-    ctx.translate(bx, by);
+    ctx.translate(bpos.x, bpos.y);
 
     if (world.boss.hitTimer > 0) {
       ctx.shadowBlur = 40;
@@ -3791,7 +3797,7 @@ ctx.restore();
 
   // DROPS (unchanged visuals)
   drops.forEach(d => {
-    let dx = d.x - cx, dy = d.y - cy;
+    const dpos = worldToIso(d.x, d.y);
     if (d.type === "hp") {
       // replicate player orb appearance exactly (blue gradient, pulse, hit flash)
       const time = Date.now() / 1000;
@@ -3800,7 +3806,7 @@ ctx.restore();
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
       ctx.save();
-      ctx.translate(dx, dy);
+      ctx.translate(dpos.x, dpos.y);
 
       // outer glow/pulse matching player
       ctx.shadowBlur = isIOS ? 8 : 18;
@@ -3832,7 +3838,7 @@ ctx.restore();
     } else if (d.type === "Sword") {
       ctx.save();
       ctx.shadowBlur = 20; ctx.shadowColor = "rgba(0,180,255,0.75)";
-      ctx.translate(dx, dy);
+      ctx.translate(dpos.x, dpos.y);
       ctx.rotate(Math.PI / 4);
       ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.lineJoin = "round";
       ctx.beginPath(); 
@@ -3847,7 +3853,7 @@ ctx.restore();
 
     } else if (d.type === "Bow") {
       ctx.save();
-      ctx.translate(dx, dy);
+      ctx.translate(dpos.x, dpos.y);
       ctx.rotate(-Math.PI / 4);
 
       // Draw metallic bow limbs with chrome/silver gradient effect
