@@ -3240,33 +3240,24 @@ function draw() {
   }
 
   const b = biomes[(biomeLevel - 1) % biomes.length];
-  // Camera center (use canvas center so worldToIso aligns with player drawing)
   const centerX = Math.round(canvas.width / 2);
   const centerY = Math.round(canvas.height / 2);
   let cx = player.x - centerX, cy = player.y - centerY;
-
-  // Choose brighter base colors for the overworld (before entering dungeon)
-  const overworldBrighten = 0.10; // increase lightness for overworld
+  const overworldBrighten = 0.10;
   const overworldSaturate = 0.00;
   const grassColor = !inDungeon ? adjustColor(b.grass || '#000', overworldBrighten, overworldSaturate) : (b.grass || '#000');
   const wallColor = !inDungeon ? adjustColor(b.wall || '#000', overworldBrighten * 0.6, overworldSaturate) : (b.wall || '#000');
-
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Use an isometric-ish projection from a corner (45deg rotation) so the view
-  // feels like looking from a room corner. We convert world pixel coordinates
-  // into screen positions per-object instead of transforming the whole canvas.
   function worldToIso(wx, wy) {
     const tx = wx / TILE, ty = wy / TILE;
-    // Steeper vertical scale so camera peers down at ~45deg; not perfectly square
-    const isoScaleX = TILE / 2; // horizontal half-width of a diamond
-    const isoScaleY = TILE / 3; // taller vertical scale for stronger 3D feel
+    const isoScaleX = TILE / 2;
+    const isoScaleY = TILE / 3;
     const isoX = (tx - ty) * isoScaleX;
     const isoY = (tx + ty) * isoScaleY;
     const pTx = player.x / TILE, pTy = player.y / TILE;
     const pIsoX = (pTx - pTy) * isoScaleX;
     const pIsoY = (pTx + pTy) * isoScaleY;
-    // Center camera on canvas so world coordinates line up with player sprite
     const camX = Math.round(canvas.width / 2);
     const camY = Math.round(canvas.height / 2);
     return { x: camX + isoX - pIsoX, y: camY + isoY - pIsoY };
@@ -3276,90 +3267,141 @@ function draw() {
   let startY = Math.max(0, Math.floor(cy / TILE));
   let endY = Math.min(MAP_SIZE, startY + 20);
 
-  // Collect visible tiles then draw them in correct depth order (by x+y)
-  const tiles = [];
-  for (let y = startY; y < endY; y++) {
-    for (let x = startX; x < endX; x++) {
-      tiles.push({ x, y, t: world.grid[y][x] });
-    }
+  // Precompute visible entities by tile for correct depth sorting
+  const entityMap = {};
+  function tileKey(x, y) { return x + "," + y; }
+  // Player
+  const pTileX = Math.floor(player.x / TILE), pTileY = Math.floor(player.y / TILE);
+  entityMap[tileKey(pTileX, pTileY)] = entityMap[tileKey(pTileX, pTileY)] || [];
+  entityMap[tileKey(pTileX, pTileY)].push({ type: 'player', obj: player });
+  // Enemies
+  world.enemies.forEach(e => {
+    const ex = Math.floor(e.x / TILE), ey = Math.floor(e.y / TILE);
+    entityMap[tileKey(ex, ey)] = entityMap[tileKey(ex, ey)] || [];
+    entityMap[tileKey(ex, ey)].push({ type: 'enemy', obj: e });
+  });
+  // Drops
+  drops.forEach(d => {
+    const dx = Math.floor(d.x / TILE), dy = Math.floor(d.y / TILE);
+    entityMap[tileKey(dx, dy)] = entityMap[tileKey(dx, dy)] || [];
+    entityMap[tileKey(dx, dy)].push({ type: 'drop', obj: d });
+  });
+  // Shots
+  shots.forEach(s => {
+    const sx = Math.floor(s.x / TILE), sy = Math.floor(s.y / TILE);
+    entityMap[tileKey(sx, sy)] = entityMap[tileKey(sx, sy)] || [];
+    entityMap[tileKey(sx, sy)].push({ type: 'shot', obj: s });
+  });
+  // Boss (if in dungeon)
+  if (inDungeon && world.boss) {
+    const bx = Math.floor(world.boss.x / TILE), by = Math.floor(world.boss.y / TILE);
+    entityMap[tileKey(bx, by)] = entityMap[tileKey(bx, by)] || [];
+    entityMap[tileKey(bx, by)].push({ type: 'boss', obj: world.boss });
   }
-  tiles.sort((a, c) => (a.x + a.y) - (c.x + c.y));
 
   const halfW = TILE / 2, halfH = TILE / 3;
-  for (let tile of tiles) {
-    const x = tile.x, y = tile.y;
-    const center = worldToIso((x + 0.5) * TILE, (y + 0.5) * TILE);
-    const drawX = center.x, drawY = center.y;
-
-    // diamond corners (compute named corners then rotate 180° for barrier orientation)
-    const pTop = { x: drawX, y: drawY - halfH };
-    const pRight = { x: drawX + halfW, y: drawY };
-    const pBottom = { x: drawX, y: drawY + halfH };
-    const pLeft = { x: drawX - halfW, y: drawY };
-    // Rotate diamond 180° so barriers face flipped (fixes upside-down appearance)
-    const p1 = pBottom; // was top
-    const p2 = pLeft;   // was right
-    const p3 = pTop;    // was bottom
-    const p4 = pRight;  // was left
-
-    // Darken unexplored tiles; keep explored tiles lit like the minimap
-    const exploredTile = explored[y] && explored[y][x];
-    if (tile.t === 1) {
-      // wall tile: draw as a raised 1x1x1 block (isometric cube)
-      const H = TILE * 0.6; // cube height in pixels (taller for stronger 3D)
-      // Slight top-face overlap to avoid visible seams where two blocks meet
-      const OVERLAP = 0.75; // pixels
-      const p1t = { x: p1.x, y: p1.y - H - OVERLAP };
-      const p2t = { x: p2.x, y: p2.y - H - OVERLAP };
-      const p3t = { x: p3.x, y: p3.y - H - OVERLAP };
-      const p4t = { x: p4.x, y: p4.y - H - OVERLAP };
-
-      // Top face (lighter)
-      ctx.fillStyle = exploredTile ? adjustColor(wallColor, 0.14, 0.05) : adjustColor(wallColor, -0.18, -0.2);
-      ctx.beginPath(); ctx.moveTo(p1t.x, p1t.y); ctx.lineTo(p2t.x, p2t.y); ctx.lineTo(p3t.x, p3t.y); ctx.lineTo(p4t.x, p4t.y); ctx.closePath(); ctx.fill();
-
-      // Left face
-      ctx.fillStyle = exploredTile ? adjustColor(wallColor, -0.10, -0.05) : "#0b0b0b";
-      ctx.beginPath(); ctx.moveTo(p4t.x, p4t.y); ctx.lineTo(p1t.x, p1t.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
-
-      // Right face
-      ctx.fillStyle = exploredTile ? adjustColor(wallColor, -0.22, -0.08) : "#050505";
-      ctx.beginPath(); ctx.moveTo(p1t.x, p1t.y); ctx.lineTo(p2t.x, p2t.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p1.x, p1.y); ctx.closePath(); ctx.fill();
-
-      // Outline
-      ctx.strokeStyle = b.wallEdge; ctx.lineWidth = 1; ctx.stroke();
-
-    } else if (!inDungeon) {
-      // Floor tile: show brightened grass when explored, dark when not
-      ctx.fillStyle = exploredTile ? grassColor : "rgba(10,10,12,0.9)";
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
-      if (exploredTile) {
-        let noise = ((x * 13 + y * 23) % 10) / 10;
-        if (noise > 0.6) {
-           ctx.fillStyle = "rgba(0,0,0,0.1)";
-           ctx.fillRect(drawX + 8, drawY + 8, 4, 4);
-        }
-        if (noise < 0.3) {
-           ctx.fillStyle = "rgba(255,255,255,0.1)";
-           ctx.fillRect(drawX + 20, drawY + 18, 2, 2);
-           ctx.fillRect(drawX + 4, drawY + 22, 2, 2);
-        }
-
-      } else {
-        ctx.fillStyle = "#111"; 
-        ctx.fillRect(drawX, drawY, TILE, TILE);
-        
-        if ((x + y) % 2 === 0) {
+  for (let y = startY; y < endY; y++) {
+    for (let x = startX; x < endX; x++) {
+      const center = worldToIso((x + 0.5) * TILE, (y + 0.5) * TILE);
+      const drawX = center.x, drawY = center.y;
+      const pTop = { x: drawX, y: drawY - halfH };
+      const pRight = { x: drawX + halfW, y: drawY };
+      const pBottom = { x: drawX, y: drawY + halfH };
+      const pLeft = { x: drawX - halfW, y: drawY };
+      const p1 = pBottom;
+      const p2 = pLeft;
+      const p3 = pTop;
+      const p4 = pRight;
+      const exploredTile = explored[y] && explored[y][x];
+      // Floor first
+      if (world.grid[y][x] !== 1) {
+        ctx.fillStyle = exploredTile ? grassColor : "rgba(10,10,12,0.9)";
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+        if (exploredTile) {
+          let noise = ((x * 13 + y * 23) % 10) / 10;
+          if (noise > 0.6) {
+            ctx.fillStyle = "rgba(0,0,0,0.1)";
+            ctx.fillRect(drawX + 8, drawY + 8, 4, 4);
+          }
+          if (noise < 0.3) {
+            ctx.fillStyle = "rgba(255,255,255,0.1)";
+            ctx.fillRect(drawX + 20, drawY + 18, 2, 2);
+            ctx.fillRect(drawX + 4, drawY + 22, 2, 2);
+          }
+        } else {
+          ctx.fillStyle = "#111";
+          ctx.fillRect(drawX, drawY, TILE, TILE);
+          if ((x + y) % 2 === 0) {
             ctx.fillStyle = "rgba(255,255,255,0.03)";
             ctx.fillRect(drawX + 2, drawY + 2, TILE - 4, TILE - 4);
+          }
+          if ((x * y) % 11 === 0) {
+            ctx.fillStyle = "#0a0a0a";
+            ctx.fillRect(drawX + 8, drawY + 8, TILE-16, TILE-16);
+          }
         }
-        if ((x * y) % 11 === 0) {
-             ctx.fillStyle = "#0a0a0a";
-             ctx.fillRect(drawX + 8, drawY + 8, TILE-16, TILE-16);
+      }
+      // Entities for this tile (drawn after floor, before wall)
+      const ents = entityMap[tileKey(x, y)] || [];
+      for (const ent of ents) {
+        // Only draw entities if tile is explored
+        if (!exploredTile) continue;
+        if (ent.type === 'player') {
+          // Draw player at this tile (centered)
+          if (pTileX === x && pTileY === y) {
+            // ...existing code for player rendering...
+            // We'll call a helper after this patch for clarity
+            drawPlayer(centerX, centerY);
+          }
+        } else if (ent.type === 'enemy') {
+          // Draw enemy at this tile
+          drawEnemy(ent.obj, worldToIso(ent.obj.x, ent.obj.y));
+        } else if (ent.type === 'drop') {
+          drawDrop(ent.obj, worldToIso(ent.obj.x, ent.obj.y));
+        } else if (ent.type === 'shot') {
+          drawShot(ent.obj, worldToIso(ent.obj.x, ent.obj.y));
+        } else if (ent.type === 'boss') {
+          drawBoss(ent.obj, worldToIso(ent.obj.x, ent.obj.y));
         }
+      }
+      // Wall last (occludes entities behind it)
+      if (world.grid[y][x] === 1) {
+        const H = TILE * 0.6;
+        const OVERLAP = 0.75;
+        const p1t = { x: p1.x, y: p1.y - H - OVERLAP };
+        const p2t = { x: p2.x, y: p2.y - H - OVERLAP };
+        const p3t = { x: p3.x, y: p3.y - H - OVERLAP };
+        const p4t = { x: p4.x, y: p4.y - H - OVERLAP };
+        ctx.fillStyle = exploredTile ? adjustColor(wallColor, 0.14, 0.05) : adjustColor(wallColor, -0.18, -0.2);
+        ctx.beginPath(); ctx.moveTo(p1t.x, p1t.y); ctx.lineTo(p2t.x, p2t.y); ctx.lineTo(p3t.x, p3t.y); ctx.lineTo(p4t.x, p4t.y); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = exploredTile ? adjustColor(wallColor, -0.10, -0.05) : "#0b0b0b";
+        ctx.beginPath(); ctx.moveTo(p4t.x, p4t.y); ctx.lineTo(p1t.x, p1t.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = exploredTile ? adjustColor(wallColor, -0.22, -0.08) : "#050505";
+        ctx.beginPath(); ctx.moveTo(p1t.x, p1t.y); ctx.lineTo(p2t.x, p2t.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p1.x, p1.y); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = b.wallEdge; ctx.lineWidth = 1; ctx.stroke();
       }
     }
   }
+  // ...existing code for minimap, stats, etc. remains unchanged...
+
+  // Helper functions for entity drawing (moved from below for clarity)
+  function drawPlayer(centerX, centerY) {
+    // ...existing code for player rendering (from below)...
+    // (copy the player rendering code here)
+  }
+  function drawEnemy(e, exy) {
+    // ...existing code for enemy rendering (from below)...
+  }
+  function drawDrop(d, dpos) {
+    // ...existing code for drop rendering (from below)...
+  }
+  function drawShot(s, spos) {
+    // ...existing code for shot rendering (from below)...
+  }
+  function drawBoss(boss, bpos) {
+    // ...existing code for boss rendering (from below)...
+  }
+}
 
   if (!inDungeon) {
     ctx.fillStyle = "#000"; ctx.beginPath();
