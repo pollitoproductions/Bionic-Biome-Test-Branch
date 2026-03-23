@@ -3272,23 +3272,47 @@ function draw() {
     const p3 = { x: drawX, y: drawY + halfH };
     const p4 = { x: drawX - halfW, y: drawY };
 
+    // Darken unexplored tiles; keep explored tiles lit like the minimap
+    const exploredTile = explored[y] && explored[y][x];
     if (tile.t === 1) {
-      // wall tile as darker diamond with edge highlights
-      ctx.fillStyle = wallColor;
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+      // wall tile: draw as a raised 1x1x1 block (isometric cube)
+      const H = TILE * 0.5; // cube height in pixels
+      const p1t = { x: p1.x, y: p1.y - H };
+      const p2t = { x: p2.x, y: p2.y - H };
+      const p3t = { x: p3.x, y: p3.y - H };
+      const p4t = { x: p4.x, y: p4.y - H };
+
+      // Top face (lighter)
+      ctx.fillStyle = exploredTile ? adjustColor(wallColor, 0.14, 0.05) : adjustColor(wallColor, -0.18, -0.2);
+      ctx.beginPath(); ctx.moveTo(p1t.x, p1t.y); ctx.lineTo(p2t.x, p2t.y); ctx.lineTo(p3t.x, p3t.y); ctx.lineTo(p4t.x, p4t.y); ctx.closePath(); ctx.fill();
+
+      // Left face
+      ctx.fillStyle = exploredTile ? adjustColor(wallColor, -0.10, -0.05) : "#0b0b0b";
+      ctx.beginPath(); ctx.moveTo(p4t.x, p4t.y); ctx.lineTo(p1t.x, p1t.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+
+      // Right face
+      ctx.fillStyle = exploredTile ? adjustColor(wallColor, -0.22, -0.08) : "#050505";
+      ctx.beginPath(); ctx.moveTo(p1t.x, p1t.y); ctx.lineTo(p2t.x, p2t.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p1.x, p1.y); ctx.closePath(); ctx.fill();
+
+      // Outline
       ctx.strokeStyle = b.wallEdge; ctx.lineWidth = 1; ctx.stroke();
+
     } else if (!inDungeon) {
-      ctx.fillStyle = grassColor;
+      // Floor tile: show brightened grass when explored, dark when not
+      ctx.fillStyle = exploredTile ? grassColor : "rgba(10,10,12,0.9)";
       ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
-      let noise = ((x * 13 + y * 23) % 10) / 10;
-      if (noise > 0.6) {
-        ctx.fillStyle = "rgba(0,0,0,0.08)";
-        ctx.fillRect(drawX - halfW + 8, drawY - halfH + 8, 4, 4);
+      if (exploredTile) {
+        let noise = ((x * 13 + y * 23) % 10) / 10;
+        if (noise > 0.6) {
+          ctx.fillStyle = "rgba(0,0,0,0.08)";
+          ctx.fillRect(drawX - halfW + 8, drawY - halfH + 8, 4, 4);
+        }
       }
     } else {
-      ctx.fillStyle = "#111";
+      // Dungeon floor: darker when unexplored
+      ctx.fillStyle = exploredTile ? "#111" : "#050505";
       ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
-      if ((x + y) % 2 === 0) {
+      if (exploredTile && (x + y) % 2 === 0) {
         ctx.fillStyle = "rgba(255,255,255,0.03)";
         ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
       }
@@ -3641,7 +3665,10 @@ ctx.restore();
     const headColor = b.wpnHead || "#dfeef6";
     const glowColor = b.wpnGlow || "#00e6ff";
     
-    let ang = Math.atan2(s.dy, s.dx);
+    // Compute arrow rotation in screen space so it visually points along its projected travel direction
+    const screenDx = (s.dx - s.dy) * 0.5;
+    const screenDy = (s.dx + s.dy) * 0.25;
+    let ang = Math.atan2(screenDy, screenDx);
     const screen = worldToIso(s.x, s.y);
     ctx.save();
     ctx.translate(screen.x, screen.y - 4);
@@ -3876,11 +3903,13 @@ ctx.restore();
   ctx.fillText(("BIOME " + biomeLevel + ": " + b.name).toUpperCase(), boxX + boxW - 6, boxY + 92);
   ctx.globalAlpha = 1.0;
 
-  const mmS = 1.0;
-  const mmX = 650;
+  // Isometric minimap: fixed pixel width so it fits on small canvases
+  const mmPixelW = 180; // total minimap width in pixels
+  const mmS = mmPixelW / MAP_SIZE; // per-tile scale on minimap
+  const mmW = mmPixelW;
+  const mmH = Math.ceil(MAP_SIZE * (mmS));
+  const mmX = Math.max(10, canvas.width - mmW - 10);
   const mmY = 15;
-  const mmW = MAP_SIZE * mmS;
-  const mmH = MAP_SIZE * mmS;
 
   // Make minimap stand out when paused
   const isPaused = !gameActive && gameRunning;
@@ -3902,17 +3931,24 @@ ctx.restore();
   ctx.strokeRect(mmX, mmY, mmW, mmH);
   ctx.shadowBlur = 0;
   
+  // Draw isometric tiles on minimap (only explored tiles are visible)
+  const halfW = mmS / 2;
+  const halfH = mmS / 4;
+  const baseX = mmX + mmW / 2;
+  const baseY = mmY + 12; // small top padding
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
-      if (explored[y][x]) {
-        if (world.grid[y][x] === 1) {
-          ctx.fillStyle = b.wall;
-        } else {
-          // Brighten explored floor tiles more for improved visibility on the minimap
-          ctx.fillStyle = adjustColor(b.grass || '#2a2a2a', 0.30, 0.12);
-        }
-        ctx.fillRect(mmX + x * mmS, mmY + y * mmS, mmS, mmS);
-      }
+      if (!explored[y][x]) continue;
+      const cxTile = baseX + (x - y) * halfW;
+      const cyTile = baseY + (x + y) * halfH;
+      if (world.grid[y][x] === 1) ctx.fillStyle = b.wall;
+      else ctx.fillStyle = adjustColor(b.grass || '#2a2a2a', 0.30, 0.12);
+      ctx.beginPath();
+      ctx.moveTo(cxTile, cyTile - halfH);
+      ctx.lineTo(cxTile + halfW, cyTile);
+      ctx.lineTo(cxTile, cyTile + halfH);
+      ctx.lineTo(cxTile - halfW, cyTile);
+      ctx.closePath(); ctx.fill();
     }
   }
 
@@ -3920,16 +3956,19 @@ ctx.restore();
     let ex = Math.floor(world.entrance.x / TILE);
     let ey = Math.floor(world.entrance.y / TILE);
     if (explored[ey] && explored[ey][ex]) {
-        ctx.fillStyle = b.enemy;
-        ctx.beginPath();
-        ctx.arc(mmX + ex * mmS, mmY + ey * mmS, 3, 0, Math.PI*2);
-        ctx.fill();
+      const en = { x: Math.floor(world.entrance.x / TILE), y: Math.floor(world.entrance.y / TILE) };
+      const exIso = baseX + (en.x - en.y) * halfW;
+      const eyIso = baseY + (en.x + en.y) * halfH;
+      ctx.fillStyle = b.enemy;
+      ctx.beginPath(); ctx.arc(exIso, eyIso, 4, 0, Math.PI*2); ctx.fill();
     }
   }
 
-  ctx.fillStyle = "#00ffff"; ctx.beginPath();
-  ctx.arc(mmX + (player.x / TILE) * mmS, mmY + (player.y / TILE) * mmS, 2.5, 0, Math.PI*2);
-  ctx.fill(); ctx.globalAlpha = 1.0;
+  // Draw player on minimap (projected)
+  const pTileX = player.x / TILE, pTileY = player.y / TILE;
+  const pIsoX = baseX + (pTileX - pTileY) * halfW;
+  const pIsoY = baseY + (pTileX + pTileY) * halfH;
+  ctx.fillStyle = "#00ffff"; ctx.beginPath(); ctx.arc(pIsoX, pIsoY, 3.5, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1.0;
 }
 
 /* === MAIN LOOP: compute dt and pass to update === */
