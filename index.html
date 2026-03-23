@@ -4049,7 +4049,7 @@ canvas.addEventListener('click', (e) => {
 });
 
 canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
+  // Don't always preventDefault here — allow UI-layer elements to receive touches.
   handleCanvasTap(e);
 }, {passive: false});
 
