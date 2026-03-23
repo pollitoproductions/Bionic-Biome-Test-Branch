@@ -1,0 +1,4048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,viewport-fit=cover">
+<meta name="description" content="Bionic Biome - A cyberpunk action game with roguelike elements">
+<meta name="author" content="Brant Fuller">
+<meta name="theme-color" content="#000000">
+<title>Bionic Biome v1.13 © 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  html, body {
+    margin: 0; padding: 0; overflow: hidden; background: #000;
+    touch-action: none; font-family: 'Courier New', sans-serif;
+    width: 100vw; height: 100vh;
+    display: flex; justify-content: center; align-items: center;
+    color: white;
+  }
+  canvas {
+    display: block; max-width: 100%; max-height: 100%;
+    object-fit: contain; background: #000;
+    image-rendering: pixelated; 
+  }
+  #ui-layer {
+    position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 100;
+    user-select: none; -webkit-user-select: none;
+  }
+  /* Virtual Joystick */
+  .joy-container {
+    position: absolute; left: 5%; bottom: 8%; width: 140px; height: 140px;
+    background: transparent; border-radius: 50%;
+    pointer-events: auto; border: 2px solid rgba(255,255,255,0.12);
+  }
+  .knob {
+    position: absolute; left: 45px; top: 45px; width: 50px; height: 50px;
+    background: rgba(255,255,255,0.12); border-radius: 50%; pointer-events: none;
+  }
+/* Action Button - no text, subtle shaded look with glossy overlay */
+.btn-action {
+  position: absolute;
+  right: 5%;
+  bottom: 8%;
+  width: 100px;
+  height: 100px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 50%;
+  pointer-events: auto;
+  border: 2px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: bold;
+  font-size: 16px;
+  text-align: center;
+  box-shadow: 0 6px 10px rgba(0,0,0,0.45);
+  transition: transform 0.08s;
+  overflow: hidden; /* clips the glossy overlay */
+}
+.btn-action:active { transform: translateY(3px); }
+
+.action-hold-label {
+  position: relative;
+  z-index: 1;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: rgba(255,255,255,0.18);
+  letter-spacing: 2px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.action-icon {
+  width: 96px;
+  height: 96px;
+  pointer-events: none;
+}
+
+/* Mini-map toggle buttons (mute / vibration) */
+.mini-toggle-btn {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(20,20,20,0.75);
+  border: 1px solid rgba(200,200,200,0.35);
+  box-shadow: 0 0 6px rgba(0,0,0,0.5);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #ccc;
+  pointer-events: auto;
+  user-select: none;
+  z-index: 160;
+}
+.mini-toggle-btn:hover {
+  background: rgba(255,255,255,0.08);
+}
+.mini-toggle-btn.active {
+  background: rgba(200,200,200,0.18);
+  color: #fff;
+}
+.mini-toggle-btn svg .slash {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.mini-toggle-btn.active svg .slash {
+  opacity: 1;
+}
+
+/* subtle top-to-bottom glossy shade over the action button */
+.btn-action::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.12) 0%,
+    rgba(255,255,255,0.05) 30%,
+    rgba(255,255,255,0.02) 60%,
+    rgba(255,255,255,0) 100%
+  );
+  mix-blend-mode: overlay;
+  z-index: 2;
+}
+
+/* small glossy highlight near top-left for extra depth */
+.btn-action::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  top: 10%;
+  width: 36%;
+  height: 30%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255,255,255,0.25), rgba(255,255,255,0) 60%);
+  mix-blend-mode: screen;
+  z-index: 3;
+}
+
+  /* SCREENS */
+  .screen-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 200; pointer-events: auto;
+    backdrop-filter: blur(4px);
+  }
+  
+  h1 { 
+    margin: 0 0 10px 0; 
+    font-family: 'Press Start 2P', monospace; 
+    font-size: 42px; 
+    text-shadow: 6px 6px 0px #3498db; 
+    color: #fff; 
+    text-align: center; 
+    line-height: 1.3;
+  }
+  
+  .author-sub {
+    font-size: 10px; color: #aaa; margin-bottom: 25px; text-align: center; line-height: 1.6;
+    font-family: 'Press Start 2P', monospace;
+    max-width: 90%;
+  }
+
+  /* STATS BOX (slightly larger to avoid overlap) */
+  .stats-box {
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px 22px; 
+    border-radius: 6px; 
+    border: 2px solid rgba(255,255,255,0.08);
+    width: 380px; 
+    text-align: left; 
+    margin-bottom: 15px;
+    font-family: 'Press Start 2P', monospace; 
+  }
+  .stat-row { 
+    display: flex; justify-content: space-between; 
+    margin-bottom: 8px; font-size: 10px; 
+    line-height: 1.2; color: #eee;
+  }
+  .stat-row:last-child { margin-bottom: 0; }
+  .stat-label { color: #aaa; }
+  .stat-val { color: #fff; }
+
+  /* BUTTONS */
+  .btn-row {
+    display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  }
+  .btn-std {
+    background: linear-gradient(180deg,#00e6ff,#0077aa);
+    color: #000; border: none;
+    padding: 12px 18px; font-size: 13px; 
+    font-weight: bold; border-radius: 6px; 
+    cursor: pointer;
+    box-shadow: 0 6px 0px #003f4d, 0 0 18px rgba(0,230,255,0.08);
+    transition: transform 0.08s, box-shadow 0.12s;
+    font-family: 'Press Start 2P', monospace; 
+    text-transform: uppercase;
+    margin: 5px;
+    pointer-events: auto;
+  }
+  .btn-std:active { transform: translateY(4px); box-shadow: none; }
+
+  .btn-revive {
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+    color: #000;
+    border: 2px solid #DAA520;
+    box-shadow: 0 6px 0px #8B6914, 0 0 20px rgba(255,165,0,0.35);
+    text-shadow: 0 1px 0 rgba(255,255,255,0.3);
+    animation: revivePulse 2s ease-in-out infinite;
+  }
+  .btn-revive:active {
+    transform: translateY(4px);
+    box-shadow: none;
+  }
+  .video-icon {
+    display: inline-block;
+    background: #000;
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1;
+    vertical-align: middle;
+    margin-right: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 2px 0 rgba(0,0,0,0.6);
+    font-family: 'Press Start 2P', monospace;
+  }
+  .btn-revive.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  @keyframes revivePulse {
+    0%, 100% { box-shadow: 0 6px 0px #8B6914, 0 0 20px rgba(255,165,0,0.35); }
+    50% { box-shadow: 0 6px 0px #8B6914, 0 0 30px rgba(255,215,0,0.6); }
+  }
+
+  .btn-menu { background: linear-gradient(90deg,#9b59b6,#3498db); color: #fff; box-shadow: 0 6px 0px rgba(20,20,40,0.7); }
+
+  /* DIFFICULTY BUTTONS - Cyberpunk theme matching main menu */
+  #diff-btns {
+    background: linear-gradient(180deg, rgba(6,6,12,0.96), rgba(18,6,34,0.96));
+    border-radius: 8px;
+    padding: 30px 20px;
+    border: 2px solid rgba(0,200,255,0.14);
+    box-shadow: 0 10px 40px rgba(0,150,255,0.06);
+    width: 90%;
+    max-width: 500px;
+    box-sizing: border-box;
+  }
+  
+  #custom-submenu {
+    background: linear-gradient(180deg, rgba(6,6,12,0.96), rgba(18,6,34,0.96));
+    border-radius: 8px;
+    padding: 20px 15px;
+    border: 2px solid rgba(0,200,255,0.14);
+    box-shadow: 0 10px 40px rgba(0,150,255,0.06);
+    width: 90%;
+    max-width: 450px;
+    box-sizing: border-box;
+  }
+  
+  .difficulty-title {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 12px;
+    font-family: 'Press Start 2P';
+    font-size: 12px;
+    color: #00e6ff;
+    text-shadow: 0 0 10px rgba(0,230,255,0.8), 0 0 20px rgba(0,230,255,0.4);
+    letter-spacing: 2px;
+    position: relative;
+    padding-bottom: 10px;
+  }
+  
+  .difficulty-title::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0,230,255,0.6), transparent);
+    box-shadow: 0 0 8px rgba(0,230,255,0.4);
+  }
+  
+  .btn-easy {
+    background: linear-gradient(135deg, rgba(46,204,113,0.2), rgba(39,174,96,0.3));
+    color: #2ecc71;
+    border: 2px solid rgba(46,204,113,0.4);
+    box-shadow: 0 0 20px rgba(46,204,113,0.15), inset 0 0 20px rgba(46,204,113,0.05);
+    text-shadow: 0 0 8px rgba(46,204,113,0.6);
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-easy::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(46,204,113,0.1), transparent);
+    transform: rotate(45deg);
+    transition: all 0.3s;
+  }
+  .btn-easy:hover {
+    border-color: rgba(46,204,113,0.8);
+    box-shadow: 0 0 30px rgba(46,204,113,0.4), inset 0 0 30px rgba(46,204,113,0.1);
+    text-shadow: 0 0 12px rgba(46,204,113,1);
+  }
+  .btn-easy:hover::before {
+    left: 100%;
+  }
+  .btn-easy:active {
+    transform: scale(0.98);
+  }
+  
+  .btn-moderate {
+    background: linear-gradient(135deg, rgba(241,196,15,0.2), rgba(243,156,18,0.3));
+    color: #f1c40f;
+    border: 2px solid rgba(241,196,15,0.4);
+    box-shadow: 0 0 20px rgba(241,196,15,0.15), inset 0 0 20px rgba(241,196,15,0.05);
+    text-shadow: 0 0 8px rgba(241,196,15,0.6);
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-moderate::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(241,196,15,0.1), transparent);
+    transform: rotate(45deg);
+    transition: all 0.3s;
+  }
+  .btn-moderate:hover {
+    border-color: rgba(241,196,15,0.8);
+    box-shadow: 0 0 30px rgba(241,196,15,0.4), inset 0 0 30px rgba(241,196,15,0.1);
+    text-shadow: 0 0 12px rgba(241,196,15,1);
+  }
+  .btn-moderate:hover::before {
+    left: 100%;
+  }
+  .btn-moderate:active {
+    transform: scale(0.98);
+  }
+  
+  .btn-hard {
+    background: linear-gradient(135deg, rgba(231,76,60,0.2), rgba(192,57,43,0.3));
+    color: #e74c3c;
+    border: 2px solid rgba(231,76,60,0.4);
+    box-shadow: 0 0 20px rgba(231,76,60,0.15), inset 0 0 20px rgba(231,76,60,0.05);
+    text-shadow: 0 0 8px rgba(231,76,60,0.6);
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-hard::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(231,76,60,0.1), transparent);
+    transform: rotate(45deg);
+    transition: all 0.3s;
+  }
+  .btn-hard:hover {
+    border-color: rgba(231,76,60,0.8);
+    box-shadow: 0 0 30px rgba(231,76,60,0.4), inset 0 0 30px rgba(231,76,60,0.1);
+    text-shadow: 0 0 12px rgba(231,76,60,1);
+  }
+  .btn-hard:hover::before {
+    left: 100%;
+  }
+  .btn-hard:active {
+    transform: scale(0.98);
+  }
+  
+  .btn-custom {
+    background: linear-gradient(135deg, rgba(155,89,182,0.2), rgba(142,68,173,0.3));
+    color: #9b59b6;
+    border: 2px solid rgba(155,89,182,0.4);
+    box-shadow: 0 0 20px rgba(155,89,182,0.15), inset 0 0 20px rgba(155,89,182,0.05);
+    text-shadow: 0 0 8px rgba(155,89,182,0.6);
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-custom::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(155,89,182,0.1), transparent);
+    transform: rotate(45deg);
+    transition: all 0.3s;
+  }
+  .btn-custom:hover {
+    border-color: rgba(155,89,182,0.8);
+    box-shadow: 0 0 30px rgba(155,89,182,0.4), inset 0 0 30px rgba(155,89,182,0.1);
+    text-shadow: 0 0 12px rgba(155,89,182,1);
+  }
+  .btn-custom:hover::before {
+    left: 100%;
+  }
+  .btn-custom:active {
+    transform: scale(0.98);
+  }
+  
+  .btn-back {
+    background: linear-gradient(135deg, rgba(52,73,94,0.2), rgba(44,62,80,0.3));
+    color: #7f8c8d;
+    border: 2px solid rgba(127,140,141,0.3);
+    box-shadow: 0 0 15px rgba(127,140,141,0.1), inset 0 0 15px rgba(127,140,141,0.05);
+    text-shadow: 0 0 6px rgba(127,140,141,0.4);
+    transition: all 0.15s;
+    margin-top: 15px;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-back::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(127,140,141,0.1), transparent);
+    transform: rotate(45deg);
+    transition: all 0.3s;
+  }
+  .btn-back:hover {
+    color: #95a5a6;
+    border-color: rgba(127,140,141,0.6);
+    box-shadow: 0 0 25px rgba(127,140,141,0.25), inset 0 0 25px rgba(127,140,141,0.1);
+    text-shadow: 0 0 10px rgba(127,140,141,0.8);
+  }
+  .btn-back:hover::before {
+    left: 100%;
+  }
+  .btn-back:active {
+    transform: scale(0.98);
+  }
+
+  /* Custom Difficulty Panel */
+  .custom-panel {
+    background: linear-gradient(180deg, rgba(6,6,12,0.96), rgba(18,6,34,0.96));
+    border: 2px solid rgba(0,200,255,0.14);
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+    font-family: 'Press Start 2P', monospace;
+    width: 100%;
+    max-width: 400px;
+    box-sizing: border-box;
+  }
+  .slider-container {
+    margin: 10px 0;
+    min-height: 50px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .slider-label {
+    color: #00e6ff;
+    font-size: 9px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    word-break: break-word;
+  }
+  .slider-value {
+    color: #fff;
+    min-width: 80px;
+    text-align: right;
+    display: inline-block;
+    font-size: 9px;
+  }
+  .custom-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.1);
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .custom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #00e6ff, #0077aa);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,230,255,0.5);
+  }
+  .custom-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #00e6ff, #0077aa);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 8px rgba(0,230,255,0.5);
+  }
+
+  /* Toggle Switch */
+  .toggle-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 12px 0;
+    padding: 10px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 6px;
+  }
+  .toggle-label {
+    color: #cfeff6;
+    font-size: 11px;
+  }
+  .toggle-switch {
+    position: relative;
+    width: 50px;
+    height: 24px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.3s;
+  }
+  .toggle-switch.active {
+    background: #00e6ff;
+  }
+  .toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s;
+  }
+  .toggle-switch.active .toggle-knob {
+    transform: translateX(26px);
+  }
+
+  /* Cyberpunk menus */
+  .menu-box {
+    background: linear-gradient(180deg, rgba(6,6,12,0.96), rgba(18,6,34,0.96));
+    border: 2px solid rgba(0, 200, 255, 0.14);
+    padding: 0; width: 90%; max-width: 420px;
+    text-align: center; font-family: 'Press Start 2P', monospace;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,150,255,0.06);
+    border-radius: 8px;
+  }
+  .menu-tabs {
+    display: flex; border-bottom: 1px solid rgba(0,200,255,0.06);
+    background: linear-gradient(90deg, rgba(0,0,0,0.18), rgba(0,30,60,0.18));
+  }
+  .menu-tab {
+    flex: 1; background: transparent; color: #9fbcd3; cursor: pointer;
+    padding: 14px 0; font-size: 12px; border: none; font-family: 'Press Start 2P', monospace;
+    position: relative;
+  }
+  .menu-tab.active {
+    color: #00e6ff;
+    box-shadow: inset 0 -4px 0 rgba(0,230,255,0.12);
+  }
+
+  .menu-content { padding: 18px; min-height: 200px; color:#cfeff6; font-size:13px; }
+  .track-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 10px 0; }
+  .track-btn {
+    background: linear-gradient(180deg,#14121a,#1f1b29); border: 1px solid rgba(0,200,255,0.06); color: #9fbcd3;
+    padding: 10px 4px; cursor: pointer; font-size: 12px; border-radius: 6px;
+    font-family: 'Press Start 2P', monospace;
+    transition: box-shadow 0.12s, transform 0.06s;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.7);
+  }
+  .track-btn.active, .track-btn:hover { box-shadow: 0 6px 24px rgba(0,230,255,0.12); color:#00e6ff; transform: translateY(-2px); border-color: rgba(0,230,255,0.18); }
+
+  .mode-switch { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
+  .switch-btn {
+    background: #1a1a2b; padding: 8px 15px; cursor: pointer; font-size: 12px; border: 1px solid rgba(255,255,255,0.04);
+    color: #9fbcd3; border-radius: 6px;
+  }
+  .switch-btn.selected { background: #00e6ff; color: #001218; box-shadow: 0 6px 20px rgba(0,230,255,0.14); }
+
+  /* TIPS LIST */
+  .tips-list {
+    text-align: left; font-size: 12px; line-height: 1.8; color: #cfeff6;
+    list-style: none;
+    padding-left: 0;
+  }
+  .tips-list li { 
+    margin-bottom: 10px;
+    padding-left: 20px;
+    position: relative;
+  }
+  .tips-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 12px;
+    height: 2px;
+    background: #00e6ff;
+    box-shadow: 0 0 6px rgba(0,230,255,0.6);
+  }
+
+  .btn-close {
+    background: linear-gradient(90deg,#ff4d4d,#c0392b); color: white; border: none; padding: 10px 20px;
+    margin: 15px; cursor: pointer; font-family: 'Press Start 2P', monospace;
+    box-shadow: 0 6px 0 rgba(150,20,20,0.7); align-self: center; border-radius:6px;
+  }
+  .btn-close:active { transform: translate(0,4px); box-shadow: none; }
+
+  /* VICTORY SPECIFIC */
+  .victory-title { color: #f1c40f; text-shadow: 4px 4px 0px #e67e22; margin-bottom: 20px; }
+  .victory-time { font-family: 'Press Start 2P', monospace; color: #fff; margin-bottom: 30px; font-size: 14px; text-align: center; line-height: 1.6; }
+  
+  .hidden { display: none !important; }
+
+  /* HIGH SCORES */
+  #highscore-diff-btns {
+    background: linear-gradient(180deg, rgba(6,6,12,0.96), rgba(18,6,34,0.96));
+    border-radius: 8px;
+    padding: 30px 20px;
+    border: 2px solid rgba(0,200,255,0.14);
+    box-shadow: 0 10px 40px rgba(0,150,255,0.06);
+    width: 90%;
+    max-width: 500px;
+    box-sizing: border-box;
+    gap: 8px;
+    justify-content: center;
+  }
+  .btn-highscore {
+    background: linear-gradient(135deg, rgba(241,196,15,0.2), rgba(243,156,18,0.3));
+    color: #f1c40f;
+    border: 2px solid rgba(241,196,15,0.4);
+    box-shadow: 0 0 20px rgba(241,196,15,0.15), inset 0 0 20px rgba(241,196,15,0.05);
+    text-shadow: 0 0 8px rgba(241,196,15,0.6);
+  }
+  .btn-highscore:hover {
+    border-color: rgba(241,196,15,0.8);
+    box-shadow: 0 0 30px rgba(241,196,15,0.4), inset 0 0 30px rgba(241,196,15,0.1);
+    text-shadow: 0 0 12px rgba(241,196,15,1);
+  }
+
+  #highscore-list-screen {
+    background: linear-gradient(180deg, rgba(6,6,12,0.96), rgba(18,6,34,0.96));
+    border-radius: 8px;
+    padding: 20px 15px;
+    border: 2px solid rgba(0,200,255,0.14);
+    box-shadow: 0 10px 40px rgba(0,150,255,0.06);
+    width: 90%;
+    max-width: 500px;
+    box-sizing: border-box;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+  }
+  .hs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    margin-top: 10px;
+  }
+  .hs-table th {
+    color: #00e6ff;
+    text-align: left;
+    padding: 8px 4px;
+    border-bottom: 1px solid rgba(0,230,255,0.3);
+    font-size: 8px;
+    letter-spacing: 1px;
+  }
+  .hs-table td {
+    color: #cfeff6;
+    padding: 7px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+  }
+  .hs-table tr:nth-child(1) td { color: #f1c40f; }
+  .hs-table tr:nth-child(2) td { color: #bdc3c7; }
+  .hs-table tr:nth-child(3) td { color: #cd7f32; }
+  .hs-rank { text-align: center; width: 30px; }
+  .hs-empty {
+    text-align: center;
+    color: #555;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 30px 10px;
+    line-height: 1.8;
+  }
+
+  /* NAME ENTRY MODAL */
+  #name-entry-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.92);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 300; pointer-events: auto;
+    backdrop-filter: blur(6px);
+  }
+  .name-entry-box {
+    background: linear-gradient(180deg, rgba(6,6,12,0.98), rgba(18,6,34,0.98));
+    border: 2px solid rgba(241,196,15,0.4);
+    border-radius: 8px;
+    padding: 25px 20px;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 0 40px rgba(241,196,15,0.15);
+  }
+  .name-entry-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 14px;
+    color: #f1c40f;
+    margin-bottom: 8px;
+    text-shadow: 0 0 10px rgba(241,196,15,0.6);
+  }
+  .name-entry-subtitle {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: #aaa;
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+  .name-entry-input {
+    background: rgba(0,0,0,0.6);
+    border: 2px solid rgba(0,230,255,0.3);
+    border-radius: 6px;
+    color: #00e6ff;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 16px;
+    padding: 12px 15px;
+    width: 80%;
+    max-width: 280px;
+    text-align: center;
+    outline: none;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    caret-color: #00e6ff;
+  }
+  .name-entry-input:focus {
+    border-color: rgba(0,230,255,0.7);
+    box-shadow: 0 0 20px rgba(0,230,255,0.2);
+  }
+  .name-entry-input::placeholder {
+    color: rgba(0,230,255,0.25);
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+  .name-entry-btns {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 20px;
+  }
+
+  /* PAUSE OVERLAY */
+  #pause-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 150;
+    pointer-events: none;
+  }
+  .pause-text {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 15px;
+    color: #00e6ff;
+    text-align: center;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    padding: 20px;
+    line-height: 1.6;
+  }
+
+  /* === Responsive fixes (added per request) === */
+  * { box-sizing: border-box; }
+
+  /* Respect safe area insets (notches) and provide padding for overlays */
+  .screen-overlay {
+    padding: env(safe-area-inset-top,20px) env(safe-area-inset-right,20px) env(safe-area-inset-bottom,20px) env(safe-area-inset-left,20px);
+    box-sizing: border-box;
+  }
+
+  /* Make menu box and stats box responsive and scrollable if tall */
+  .menu-box,
+  .stats-box,
+  .menu-content {
+    width: min(92vw, 420px);
+    max-width: 92vw;
+    max-height: calc(100vh - 96px);
+    overflow: auto;
+  }
+
+  /* Limit tips panel height so list scrolls rather than pushing off bottom */
+  #panel-tips {
+    max-height: calc(60vh);
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+
+  /* Ensure victory screen content wraps and fits horizontally */
+  .victory-time,
+  .author-sub,
+  .menu-content,
+  .stats-box .stat-row {
+    word-wrap: break-word;
+    hyphens: auto;
+  }
+
+  /* Make the "SELECT DIFFICULTY" area responsive */
+  #diff-btns { gap: 8px; justify-content: center; padding: 6px; }
+
+  /* Prevent horizontal overflow */
+  html, body {
+    overflow-x: hidden;
+  }
+
+  /* Small devices: reduce large fonts so screens fit */
+  @media (max-width: 420px) {
+    h1 { font-size: 20px; }
+    .victory-time { font-size: 12px; }
+    .btn-std { padding: 10px 12px; font-size: 11px; }
+    .stats-box { padding: 10px; }
+  }
+
+  /* Portrait-mode tip shown above the canvas on narrow/tall devices */
+  .portrait-tip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, rgba(0,0,0,0.95), rgba(0,0,0,0.9));
+    color: #00e6ff;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-align: center;
+    z-index: 120;
+    pointer-events: none;
+    padding: 10px 14px;
+    box-sizing: border-box;
+  }
+
+</style>
+</head>
+<body>
+
+<canvas id="c" width="800" height="600"></canvas>
+
+  <div id="portrait-tip" class="portrait-tip hidden" aria-hidden="true">BEST EXPERIENCE: TURN YOUR PHONE TO LANDSCAPE</div>
+
+<div id="ui-layer">
+  <div class="joy-container" id="joy"><div class="knob" id="knob"></div></div>
+  <div class="btn-action" id="act" aria-label="attack button">
+    <svg class="action-icon" aria-hidden="true" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+      <!-- Transparent background so SVG blends with button -->
+
+      <!-- Group of 10 nested ovals. Translucent gray strokes to match UI style. 
+           Ovals are non-touching, spaced wider at the top and compressed toward the bottom.
+           Rotated -35 degrees to point toward top-center. Center of rotation = 100,100. -->
+      <g transform="translate(6 6) rotate(-35 100 100)" stroke="rgba(255,255,255,0.12)" stroke-width="3" fill="none" stroke-linecap="round">
+        <!-- Slight southeast translation and increased downward bunching toward the narrow end -->
+        <ellipse cx="104" cy="92" rx="46" ry="74" />
+        <ellipse cx="105" cy="96" rx="40" ry="68" />
+        <ellipse cx="106" cy="100" rx="36" ry="62" />
+        <ellipse cx="107" cy="104" rx="32" ry="56" />
+        <ellipse cx="108" cy="108" rx="28" ry="50" />
+        <ellipse cx="109" cy="112" rx="24" ry="44" />
+        <ellipse cx="110" cy="116" rx="20" ry="38" />
+        <ellipse cx="111" cy="120" rx="16" ry="32" />
+        <ellipse cx="112" cy="124" rx="12" ry="26" />
+        <ellipse cx="113" cy="128" rx="8" ry="20" />
+      </g>
+
+    </svg>
+  </div>
+  <div class="mini-toggle-btn mute-btn" id="mute-btn" aria-label="toggle sound">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3 9V15H7L12 20V4L7 9H3Z" />
+      <path d="M16.5 12C16.5 10.21 15.7 8.58 14.24 7.59V16.41C15.7 15.42 16.5 13.79 16.5 12Z" />
+      <path d="M19.5 12C19.5 9.79 18.59 7.79 17.06 6.47V17.53C18.59 16.21 19.5 14.21 19.5 12Z" />
+      <path class="slash" d="M5 5L19 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    </svg>
+  </div>
+</div>
+
+<div id="start-screen" class="screen-overlay">
+  <h1 id="title-text">BIONIC<br>BIOME</h1>
+  
+  <div class="author-sub">Pollito Productions &copy; 2026<br>All Rights Reserved.</div>
+
+  <div class="stats-box" id="stats-box" style="display:none;">
+    <div class="stat-row"><span class="stat-label">BIOME REACHED:</span><span class="stat-val" id="st-biome">1</span></div>
+    <div class="stat-row"><span class="stat-label">ENEMY COUNT:</span><span class="stat-val" id="st-kills">0</span></div>
+    <div class="stat-row"><span class="stat-label">TIME LASTED:</span><span class="stat-val" id="st-time">00:00</span></div>
+    <div class="stat-row"><span class="stat-label">HP COLLECTED:</span><span class="stat-val" id="st-hearts">0</span></div>
+    <div class="stat-row"><span class="stat-label">SWORD DMG:</span><span class="stat-val" id="st-sword">1</span></div>
+    <div class="stat-row"><span class="stat-label">BOW DMG:</span><span class="stat-val" id="st-bow">1</span></div>
+    <div class="stat-row"><span class="stat-label">DIFFICULTY:</span><span class="stat-val" id="st-diff">CASUAL</span></div>
+    <div class="stat-row"><span class="stat-label">REVIVES USED:</span><span class="stat-val" id="st-continues">0</span></div>
+  </div>
+  
+  <div class="btn-row" id="main-btns">
+    <button class="btn-std btn-menu" id="menu-btn">MENU</button>
+    <button class="btn-std" id="highscore-btn">LEADERBOARDS</button>
+    <button class="btn-std" id="play-btn">PLAY</button>
+  </div>
+
+    <div class="btn-row hidden" id="game-over-btns">
+    <button class="btn-std btn-revive" id="revive-ad-btn" onclick="requestReviveAd()"><span class="video-icon">&#9654;</span> 3 Revives Remaining</button>
+    <button class="btn-std" id="main-menu-btn" onclick="resetToMainMenu()">MAIN MENU</button>
+  </div>
+
+  <div class="btn-row hidden" id="diff-btns">
+    <div class="difficulty-title">SELECT DIFFICULTY</div>
+    <button class="btn-std btn-easy" onclick="selectDifficulty('easy')">CASUAL</button>
+    <button class="btn-std btn-moderate" onclick="selectDifficulty('moderate')">MODERATE</button>
+    <button class="btn-std btn-hard" onclick="selectDifficulty('impossible')">IMPOSSIBLE</button>
+    <button class="btn-std btn-custom" onclick="selectDifficulty('custom')">CUSTOM</button>
+    <button class="btn-std btn-back" onclick="backToHome()">BACK</button>
+
+    <!-- Tip about pausing on map -->
+    <div style="width:100%; text-align:center; margin-top:12px; font-family:'Press Start 2P'; font-size:11px; color:#00e6ff; max-width:360px;">
+      TAP MAP (TOP RIGHT) TO PAUSE
+    </div>
+  </div>
+
+  <!-- High Scores: Difficulty Selection -->
+  <div class="btn-row hidden" id="highscore-diff-btns">
+    <div class="difficulty-title" style="color:#00e6ff;">GLOBAL LEADERBOARDS</div>
+    <button class="btn-std btn-easy" onclick="showHighScoresFor('easy')">CASUAL</button>
+    <button class="btn-std btn-moderate" onclick="showHighScoresFor('moderate')">MODERATE</button>
+    <button class="btn-std btn-hard" onclick="showHighScoresFor('impossible')">IMPOSSIBLE</button>
+    <button class="btn-std btn-back" onclick="backFromHighScoreDiff()">BACK</button>
+  </div>
+
+  <!-- High Scores: Top 5 List -->
+  <div class="hidden" id="highscore-list-screen">
+    <div class="difficulty-title" id="hs-list-title">CASUAL - TOP 5</div>
+    <div id="hs-list-body"></div>
+    <div style="text-align:center; margin-top:15px;">
+      <button class="btn-std btn-back" onclick="backFromHighScoreList()">BACK</button>
+    </div>
+  </div>
+
+  <!-- Custom Difficulty Submenu (separate from main difficulty menu) -->
+  <div class="btn-row hidden" id="custom-submenu">
+    <div class="difficulty-title">CUSTOM SETTINGS</div>
+    
+    <div class="custom-panel">
+      <div class="slider-container">
+        <div class="slider-label">
+          <span>DROP RATE</span>
+          <span class="slider-value" id="drop-rate-val">Normal</span>
+        </div>
+        <input type="range" min="0" max="4" value="2" step="1" class="custom-slider" id="drop-rate-slider">
+      </div>
+      
+      <div class="slider-container">
+        <div class="slider-label">
+          <span>ENEMY COUNT</span>
+          <span class="slider-value" id="enemy-count-val">Normal</span>
+        </div>
+        <input type="range" min="0" max="4" value="2" step="1" class="custom-slider" id="enemy-count-slider">
+      </div>
+
+      <div class="slider-container">
+        <div class="slider-label">
+          <span>ENEMY DIFFICULTY</span>
+          <span class="slider-value" id="enemy-difficulty-val">Normal</span>
+        </div>
+        <input type="range" min="0" max="4" value="2" step="1" class="custom-slider" id="enemy-difficulty-slider">
+      </div>
+
+      <button class="btn-std" style="margin-top:10px;" onclick="startCustomGame()">START GAME</button>
+      <button class="btn-std btn-back" onclick="backToDifficulty()">BACK</button>
+    </div>
+  </div>
+</div>
+
+<div id="menu-screen" class="screen-overlay hidden">
+  <div class="menu-box">
+    <div class="menu-tabs">
+      <button class="menu-tab active" id="tab-sound">SOUND</button>
+      <button class="menu-tab" id="tab-settings">SETTINGS</button>
+      <button class="menu-tab" id="tab-tips">TIPS</button>
+    </div>
+    
+    <div class="menu-content" id="panel-sound">
+       <div class="mode-switch">
+         <div class="switch-btn selected" id="sw-biome">BIOME</div>
+         <div class="switch-btn" id="sw-dungeon">DUNGEON</div>
+       </div>
+       <div class="track-grid" id="track-grid">
+         </div>
+    </div>
+
+    <div class="menu-content hidden" id="panel-settings">
+      <div style="text-align:center; color:#00e6ff; font-size:12px; margin-bottom:20px;">GAME SETTINGS</div>
+      
+      <div class="toggle-container">
+        <span class="toggle-label">SOUND</span>
+        <div class="toggle-switch active" id="toggle-sound">
+          <div class="toggle-knob"></div>
+        </div>
+      </div>
+
+      <div class="toggle-container">
+        <span class="toggle-label">VIBRATION</span>
+        <div class="toggle-switch active" id="toggle-vibration">
+          <div class="toggle-knob"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="menu-content hidden" id="panel-tips">
+      <ul class="tips-list">
+        <li>Hold the action button to swing your sword and fire arrows continuously.</li>
+        <li>Enemies do 50% more damage if your back is turned.</li>
+        <li>Enemies and Bosses scale infinitely.</li>
+        <li>Defeating the Biome 10 Boss wins the run.</li>
+        <li>Mark the entrance to the dungeon on the map by moving close to it.</li>
+      </ul>
+    </div>
+
+    <button class="btn-close" id="close-menu-btn">BACK</button>
+  </div>
+</div>
+
+<div id="victory-screen" class="screen-overlay hidden">
+  <h1 class="victory-title">CONGRATULATIONS!</h1>
+  <div class="victory-time">
+    YOU HAVE DEFEATED THE<br>INFERNO BOSS!<br><br>
+    OFFICIAL TIME:<br>
+    <span id="victory-time-display" style="color:#2ecc71; font-size: 20px;">00:00</span><br><br>
+    <span id="victory-continues" style="color:#aaa; font-size: 12px;"></span>
+  </div>
+  <button class="btn-std" id="continue-btn">CONTINUE</button>
+</div>
+
+<div id="pause-overlay" class="hidden">
+  <div class="pause-text">TAP ANYWHERE TO RESUME</div>
+</div>
+
+<div id="revive-info-overlay" class="screen-overlay hidden">
+  <h1>REVIVE ACTIVE</h1>
+  <div class="author-sub" style="margin-bottom: 14px; color: #a5f0ff;">
+    Your revive is active!
+  </div>
+  <!-- Revive timer removed per request -->
+  <div class="author-sub" style="margin-bottom: 20px; color: #a5f0ff;">
+    Revives Remaing: <span id="revive-remaining">3</span>
+  </div>
+  <button class="btn-std btn-revive" id="revive-confirm-btn">CONTINUE</button>
+</div>
+
+<!-- Name Entry Modal -->
+<div id="name-entry-overlay" class="hidden" style="display:none !important">
+  <div class="name-entry-box">
+    <div class="name-entry-title">NEW HIGH SCORE!</div>
+    <div class="name-entry-subtitle" id="name-entry-score-text">SCORE: 0 ENEMY COUNT</div>
+    <input type="text" class="name-entry-input" id="name-entry-input" maxlength="10" placeholder="YOUR NAME" autocomplete="off" spellcheck="false">
+    <div class="name-entry-btns">
+      <button class="btn-std" id="name-entry-save" onclick="saveHighScore()">SAVE</button>
+      <button class="btn-std btn-back" onclick="skipHighScore()">SKIP</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Intercept ad-related console messages and convert them to a compact UI message.
+(function() {
+  const origWarn = console.warn.bind(console);
+  const origError = console.error.bind(console);
+  const adPattern = /admob|ad(s)?|reward(ed)?|frequency cap|frequency-cap|frequency_cap|not ready/i;
+
+  function showAdNotReadyUI() {
+    const btn = document.getElementById && document.getElementById('revive-ad-btn');
+    if (btn) {
+      btn.classList.add('disabled');
+      btn.innerHTML = `<span class="video-icon">&#9654;</span> AD NOT READY`;
+      btn.title = 'AD NOT READY';
+    }
+  }
+
+  console.warn = function(...args) {
+    try {
+      if (args && args.length && typeof args[0] === 'string' && adPattern.test(args[0])) {
+        showAdNotReadyUI();
+        return; // swallow ad-related warning
+      }
+    } catch (e) {}
+    origWarn(...args);
+  };
+
+  console.error = function(...args) {
+    try {
+      if (args && args.length && typeof args[0] === 'string' && adPattern.test(args[0])) {
+        showAdNotReadyUI();
+        return; // swallow ad-related error
+      }
+    } catch (e) {}
+    origError(...args);
+  };
+})();
+
+// Portrait-tip visibility helper
+function updatePortraitTip() {
+  try {
+    const tip = document.getElementById('portrait-tip');
+    if (!tip) return;
+    const isPortrait = window.innerHeight > window.innerWidth;
+    if (isPortrait) {
+      tip.classList.remove('hidden');
+      tip.setAttribute('aria-hidden', 'false');
+    } else {
+      tip.classList.add('hidden');
+      tip.setAttribute('aria-hidden', 'true');
+    }
+  } catch (e) {}
+}
+
+window.addEventListener('resize', updatePortraitTip);
+window.addEventListener('orientationchange', updatePortraitTip);
+document.addEventListener('visibilitychange', updatePortraitTip);
+document.addEventListener('DOMContentLoaded', updatePortraitTip);
+setTimeout(updatePortraitTip, 250);
+
+/**
+ * BIONIC BIOME v1.13
+ *
+ * Changes implemented in this version:
+ * - Beginner (was Easy) naming in UI and stats.
+ * - Beginner mode: triple drop chances (hp, sword, bow).
+ * - Pause when menu shown or page/backgrounded; tap anywhere to pause/unpause.
+ * - Responsive CSS adjustments so tips and end-of-run screens don't spill off small screens.
+ * - MAX_HP constant added and used to initialize player.max (set to 9,999,999).
+ */
+
+/* === CONFIG / CONSTANTS (unchanged semantics) === */
+const TILE = 32;
+const MAP_SIZE = 120; 
+const WORLD = MAP_SIZE * TILE;
+const MAX_HP = 9999999; // new max HP constant per request
+
+// GAME STATE
+let gameActive = false;      // when true, update(dt) runs and input works
+let gameRunning = false;     // marks that a run is in-progress (used to allow pause/resume)
+let gameOver = false;
+let biomeLevel = 1;
+let inDungeon = false;
+let currentDifficulty = 'easy'; // remains the key; displayed name will be "CASUAL"
+
+let wasActiveBeforePause = false;
+let pauseTimestamp = 0;
+let savedMusicTrack = null; // Track what music was playing before pause
+
+// Custom difficulty settings
+let customDropRate = 2; // 0=Very Low, 1=Low, 2=Normal, 3=High, 4=Very High
+let customEnemyCount = 2; // 0=Very Low, 1=Low, 2=Normal, 3=High, 4=Very High
+let customEnemyDifficulty = 2; // 0=Very Low, 1=Low, 2=Normal, 3=High, 4=Very High
+let soundEnabled = true;
+let vibrationEnabled = true;
+
+const DIFFICULTY_SETTINGS = {
+  easy: {
+    name: "CASUAL",
+    enemySpeedStep: 0.08,
+    enemyCountBase: 200,
+    enemyCountStep: 50,
+    bossHpMult: 400,
+    bossDefMult: 0.4,
+    bossSpeedAdd: 0,
+    enemyDamageMult: 1,
+    enemyHpMult: 1
+  },
+  moderate: { 
+    name: "MODERATE",
+    enemySpeedStep: 0.15,
+    enemyCountBase: 200,
+    enemyCountStep: 60,
+    bossHpMult: 600,
+    bossDefMult: 0.5,
+    bossSpeedAdd: 0.25,
+    enemyDamageMult: 1,
+    enemyHpMult: 1
+  },
+  impossible: { 
+    name: "IMPOSSIBLE",
+    enemySpeedStep: 0.22,
+    enemyCountBase: 300,
+    enemyCountStep: 75,
+    bossHpMult: 800,
+    bossDefMult: 0.6,
+    bossSpeedAdd: 0.5,
+    enemyDamageMult: 1,
+    enemyHpMult: 1
+  },
+  custom: {
+    name: "CUSTOM",
+    enemySpeedStep: 0.15, // Will be calculated based on enemy count slider
+    enemyCountBase: 200,  // Will be calculated based on slider
+    enemyCountStep: 60,   // Will be calculated based on slider
+    bossHpMult: 600,      // Scales with enemy count
+    bossDefMult: 0.5,     // Scales with enemy count
+    bossSpeedAdd: 0.25,   // Scales with enemy count
+    enemyDamageMult: 1,   // Scales with enemy difficulty slider
+    enemyHpMult: 1        // Scales with enemy difficulty slider
+  }
+};
+
+// These original constants remain the same in numeric value but we'll derive per-second velocities below.
+const PLAYER_SPEED = 4.5;   // originally px/frame
+const BOSS_SPEED = 2.5;     // originally px/frame
+const PLAYER_RAD = 18;      // unchanged
+
+// ARROW: restored original per-frame number (13). We'll convert to per-second below.
+const ARROW_BASE_SPEED = 13; // px/frame originally
+
+// Fire interval in ms (unchanged)
+const FIRE_INTERVAL_MS = 100;
+
+/* === DELTA-TIME PREPARATION ===
+   The game historically used values in px/frame. We'll treat those "per-frame" numbers as if they were for 60 FPS,
+   and convert them to per-second velocities by multiplying by 60 (frames/sec). During update, we multiply per-second
+   velocities by dt (seconds since last frame).
+*/
+const FPS = 60;
+const PLAYER_SPEED_PPS = PLAYER_SPEED * FPS;      // px per second
+const BOSS_SPEED_PPS = BOSS_SPEED * FPS;          // px per second
+const ARROW_SPEED_PPS = ARROW_BASE_SPEED * FPS;   // px per second
+
+/* === STATE === */
+let startTime = 0;
+let enemiesKilled = 0;
+let heartsCollected = 0;
+let continuesUsed = 0;
+let beatGameTime = null;
+
+let player, world;
+let shots = [];
+let drops = [];
+let explored = [];
+
+// Revive / ad settings: maximum revives per run (AdMob will enforce frequency)
+const MAX_REVIVES = 3;
+let reviveButtonInterval = null;
+
+/* Flow-field timing: previously used a frame counter flowTimer++ and ran updateFlowField when >15.
+   15 frames at 60FPS is 0.25s (I use 0.2667 earlier — keep similar). Use a seconds accumulator now.
+*/
+let flowMap = []; 
+let flowAccSeconds = 0; // accumulate seconds to trigger flow updates
+
+/* --- SOUND / MUSIC --- */
+const Music = {
+  ctx: null, osc: null, subOsc: null, gain: null, timer: null, isPlaying: false, currentTrackId: null,
+  
+  init() { 
+    if (!this.ctx) { 
+      const AudioContext = window.AudioContext || window.webkitAudioContext; 
+      this.ctx = new AudioContext(); 
+    } 
+    if (this.ctx.state === 'suspended') this.ctx.resume(); 
+  },
+  
+  playSFX(type) { 
+    if(!soundEnabled || !this.ctx) return; 
+    const t = this.ctx.currentTime; 
+    const osc = this.ctx.createOscillator(); 
+    const gain = this.ctx.createGain(); 
+    const mod = this.ctx.createOscillator(); 
+    const modGain = this.ctx.createGain(); 
+    
+    osc.connect(gain); 
+    gain.connect(this.ctx.destination); 
+    mod.connect(modGain); 
+    modGain.connect(osc.frequency); 
+    
+    if(type === 'start') { 
+      osc.type = 'square'; 
+      osc.frequency.setValueAtTime(110, t); 
+      osc.frequency.exponentialRampToValueAtTime(880, t + 0.3); 
+      mod.type = 'sawtooth'; 
+      mod.frequency.setValueAtTime(50, t); 
+      mod.frequency.linearRampToValueAtTime(200, t + 0.3); 
+      modGain.gain.setValueAtTime(500, t); 
+      gain.gain.setValueAtTime(0.2, t); 
+      gain.gain.linearRampToValueAtTime(0, t + 0.3); 
+      osc.start(t); mod.start(t); 
+      osc.stop(t + 0.3); mod.stop(t + 0.3);
+    } else if(type === 'gameover') { 
+      osc.type = 'sawtooth'; 
+      osc.frequency.setValueAtTime(400, t); 
+      osc.frequency.exponentialRampToValueAtTime(40, t + 1.0); 
+      mod.type = 'square'; 
+      mod.frequency.setValueAtTime(60, t); 
+      mod.frequency.linearRampToValueAtTime(10, t + 1.0); 
+      modGain.gain.setValueAtTime(1000, t); 
+      gain.gain.setValueAtTime(0.3, t); 
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 1.0); 
+      osc.start(t); mod.start(t); 
+      osc.stop(t + 1.0); mod.stop(t + 1.0);
+    } 
+  },
+  
+  generateDarkTrack(level, isDungeon) { 
+    // Low, heavy base roots for a darksynth feel (C2, D2, E2, F2, A1)
+    const roots = [65.41, 73.42, 82.41, 87.31, 55.00, 65.41, 73.42, 82.41, 87.31, 55.00]; 
+    let safeLevel = Math.max(1, Math.min(10, level));
+    let base = roots[safeLevel - 1]; 
+    
+    let intervals = [];
+    // Faster tempos for a driving, action-packed feel (110ms - 140ms)
+    let speedDelay = 130; 
+
+    // Driving, rhythmic Cyberpunk/Darksynth Basslines
+    switch(safeLevel) {
+      case 1: // High Energy Jumps (formerly biome 8)
+        intervals = [0, 12, 0, 12, 0, 12, 0, 12, 3, 15, 3, 15, 5, 17, 5, 17];
+        speedDelay = 125; 
+        break;
+      case 2: // Arpeggiated Flow
+        intervals = [0, 3, 0, 7, 0, 10, 0, 12, 0, null, 0, null, 12, 10, 7, 3];
+        speedDelay = 130;
+        break;
+      case 3: // Syncopated Gallop (Lots of gaps for breathing room)
+        intervals = [0, 0, null, 0, 0, null, 0, 12, 0, 0, null, 0, 0, null, 3, 5];
+        speedDelay = 140;
+        break;
+      case 4: // Pedal Point Riff (Constant high drone with shifting bass)
+        intervals = [0, 12, 10, 12, 0, 12, 10, 12, 7, 12, 10, 12, 5, 12, 10, 12];
+        speedDelay = 135;
+        break;
+      case 5: // Punchy Groove
+        intervals = [0, null, 0, 12, null, 0, 0, 3, null, 0, 0, 5, null, 3, 0, null];
+        speedDelay = 130;
+        break;
+      case 6: // Phrygian Danger (Dark, creeping feeling)
+        intervals = [0, 0, 7, 0, 8, 0, 7, 0, 3, 0, 5, 0, 7, 0, 3, 5];
+        speedDelay = 135;
+        break;
+      case 7: // Relentless Machine (Rigid, industrial)
+        intervals = [0, 0, 0, 0, 12, 0, 0, 0, 10, 0, 0, 0, 3, 0, 5, 0];
+        speedDelay = 120; 
+        break;
+      case 8: // Driving Octaves (formerly biome 1)
+        intervals = [0, 0, 12, 0, 0, 0, 12, 0, 0, 3, 0, 5, 0, 0, 12, 0];
+        speedDelay = 140; 
+        break;
+      case 9: // Building Tension
+        intervals = [0, null, 0, null, 0, null, 0, null, 12, 12, 10, 10, 7, 7, 5, 5];
+        speedDelay = 120;
+        break;
+      case 10: // The Climax (Fast, descending run)
+        intervals = [0, 0, 12, 0, 10, 0, 8, 0, 7, 0, 5, 0, 3, 0, 2, 0];
+        speedDelay = 110; 
+        break;
+    }
+
+    let notes = [];
+    for (let i = 0; i < intervals.length; i++) { 
+      if (intervals[i] === null) {
+        notes.push(0); 
+      } else {
+        notes.push(base * Math.pow(2, intervals[i] / 12)); 
+      }
+    } 
+    
+    // Dungeons simply play slightly faster to increase urgency (no weird pitch shifting)
+    let finalSpeed = isDungeon ? Math.max(80, speedDelay - 15) : speedDelay;
+    
+    return { notes, bpm: finalSpeed }; 
+  },
+  
+  play(type, override) { 
+    if(!soundEnabled) return; 
+    let lvl = override || biomeLevel; 
+    let id = type; 
+    if(type === 'overworld' || type === 'dungeon') id = type + '_' + lvl; 
+    if(this.currentTrackId === id && this.isPlaying) return; 
+    
+    this.stop(); 
+    this.init(); 
+    this.currentTrackId = id; 
+    this.isPlaying = true; 
+    let td = null; 
+    
+    if(type === 'title') td = {bpm: 180, notes: [261, 523, 392, 329, 261, 523, 493, 392], loop: true}; 
+    else if(type === 'victory') td = {bpm: 120, notes: [261, 392, 523, 659, 783, 1046, 0], loop: false}; 
+    else if(type === 'overworld'){ 
+      td = this.generateDarkTrack(lvl, false); 
+      td.loop = true; 
+    } 
+    else if(type === 'dungeon'){ 
+      td = this.generateDarkTrack(lvl, true); 
+      td.loop = true; 
+    } 
+    
+    if(!td) return; 
+    
+    this.osc = this.ctx.createOscillator(); 
+    this.subOsc = this.ctx.createOscillator(); // ADDED: Sub-bass for massive depth
+    this.gain = this.ctx.createGain(); 
+    
+    this.osc.type = 'sawtooth'; // Gritty lead
+    this.subOsc.type = 'square'; // Fat, hollow sub-bass
+    
+    this.osc.connect(this.gain); 
+    this.subOsc.connect(this.gain); 
+    this.gain.connect(this.ctx.destination); 
+    this.gain.gain.setValueAtTime(0, this.ctx.currentTime); 
+    
+    this.osc.start(); 
+    this.subOsc.start(); 
+    
+    let idx = 0; 
+    const next = () => { 
+      if(!this.isPlaying) return; 
+      let f = td.notes[idx]; 
+      const t = this.ctx.currentTime; 
+      const dur = td.bpm / 1000; 
+      
+      if(f > 0){ 
+        this.osc.frequency.setValueAtTime(f, t); 
+        this.subOsc.frequency.setValueAtTime(f / 2, t); // Sub-bass plays exactly 1 octave lower
+        
+        this.gain.gain.cancelScheduledValues(t); 
+        this.gain.gain.setValueAtTime(0.06, t); // Slightly lower volume to account for two oscillators
+        this.gain.gain.exponentialRampToValueAtTime(0.001, t + (dur * 0.95)); // Slightly longer decay
+      } else { 
+        this.gain.gain.setValueAtTime(0, t); 
+      } 
+      
+      idx++; 
+      if(idx >= td.notes.length){ 
+        if(!td.loop){ 
+          this.stop(); 
+          return; 
+        } 
+        idx = 0; 
+      } 
+      this.timer = setTimeout(next, td.bpm); 
+    }; 
+    next(); 
+  },
+  
+  stop() { 
+    this.isPlaying = false; 
+    clearTimeout(this.timer); 
+    if(this.osc){ 
+      try{ 
+        this.osc.stop(); 
+        this.osc.disconnect(); 
+      } catch(e){} 
+      this.osc = null; 
+    } 
+    if(this.subOsc){ 
+      try{ 
+        this.subOsc.stop(); 
+        this.subOsc.disconnect(); 
+      } catch(e){} 
+      this.subOsc = null; 
+    }
+    this.currentTrackId = null; 
+  }
+};
+
+
+/* === BIOMES, UTILS, DOM (unchanged) === */
+const biomes = [
+  // 1) Crystal Cavern (moved to be the first biome)
+  {name: "Crystal Cavern", grass:"#2d1b3f", wall:"#355c7d", wallEdge:"#1a0f2b", boss:"#d9a441", enemy:"#c74b4b",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 2) Neon Wasteland - cyberpunk atmosphere
+  {name: "Neon Wasteland", grass:"#1c1c24", wall:"#2f1b33", wallEdge:"#00e5ff", boss:"#2cfff0", enemy:"#a6ff00",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 3) Scorched Ashlands (moved to biome 3)
+  {name: "Scorched Ashlands", grass:"#2a2520", wall:"#4a3f35", wallEdge:"#e87d20", boss:"#f7f7f7", enemy:"#e8a030",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 4) Icy Tundra - cyan glow for contrast on light background
+  {name: "Icy Tundra", grass:"#a9e8ff", wall:"#e4f6ff", wallEdge:"#6fb4d6", boss:"#ff934f", enemy:"#7a0f2e",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 5) Gold Waste - darker tones for better weapon visibility
+  {name: "Gold Waste", grass:"#3d3208", wall:"#5c4d0f", wallEdge:"#1f1804", boss:"#e67e22", enemy:"#0f6177",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 6) Azure Lake
+  {name: "Azure Lake", grass:"#85c1e9", wall:"#d6eaf8", wallEdge:"#2e86c1", boss:"#fdfefe", enemy:"#d35400",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 7) Midnight Zone
+  {name: "Midnight Zone", grass:"#2c3e50", wall:"#566573", wallEdge:"#17202a", boss:"#a569bd", enemy:"#ff4d4d",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 8) Violet Void
+  {name: "Violet Void", grass:"#4a235a", wall:"#a569bd", wallEdge:"#150b1a", boss:"#ecf0f1", enemy:"#f5e29f",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 9) Starfall Peaks
+  {name: "Starfall Peaks", grass:"#0e1a35", wall:"#102b59", wallEdge:"#0b1022", boss:"#f4f7ff", enemy:"#d8783a",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"},
+  // 10) INFERNO
+  {name: "INFERNO", grass:"#c0392b", wall:"#e6b0aa", wallEdge:"#641e16", boss:"#ff3b30", enemy:"#22c5c5",
+   wpnTrail:"#f1c40f", wpnShaft:"#bdc3c7", wpnHead:"#dfeef6", wpnGlow:"#00e6ff"}
+];
+
+// Utility: convert hex color to {r,g,b}
+function hexToRgb(hex) {
+  hex = hex.replace('#', '');
+  if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+  const n = parseInt(hex, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function rgbToHex(rgb) {
+  const r = Math.round(rgb.r);
+  const g = Math.round(rgb.g);
+  const b = Math.round(rgb.b);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function rgbToHsl({r, g, b}) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h: h * 360, s: s, l: l };
+}
+
+function hslToRgb(h, s, l) {
+  h /= 360;
+  let r, g, b;
+  if (s === 0) r = g = b = l;
+  else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return { r: r * 255, g: g * 255, b: b * 255 };
+}
+
+function adjustColor(hex, deltaL = 0, deltaS = 0) {
+  try {
+    const rgb = hexToRgb(hex);
+    const hsl = rgbToHsl(rgb);
+    hsl.l = Math.max(0, Math.min(1, hsl.l + deltaL));
+    hsl.s = Math.max(0, Math.min(1, hsl.s + deltaS));
+    const newRgb = hslToRgb(hsl.h, hsl.s, hsl.l);
+    return rgbToHex(newRgb);
+  } catch (e) {
+    return hex;
+  }
+}
+
+// Apply subtle visual improvements to all biomes: darken bases, brighten edges and important actors
+function enhanceBiomes() {
+  if (!Array.isArray(biomes)) return;
+  biomes.forEach(b => {
+    if (b.grass) b.grass = adjustColor(b.grass, -0.10, 0);
+    if (b.wall) b.wall = adjustColor(b.wall, -0.10, 0);
+    if (b.wallEdge) b.wallEdge = adjustColor(b.wallEdge, 0.12, 0.08);
+    if (b.boss) b.boss = adjustColor(b.boss, 0.12, 0.10);
+    if (b.enemy) b.enemy = adjustColor(b.enemy, 0.12, 0.12);
+    if (b.wpnGlow) b.wpnGlow = adjustColor(b.wpnGlow, 0.15, 0.18);
+  });
+}
+
+enhanceBiomes();
+
+function isWall(x, y) {
+  let tx = Math.floor(x / TILE);
+  let ty = Math.floor(y / TILE);
+  if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) return true;
+  return world.grid[ty][tx] === 1;
+}
+
+function findSafePos() {
+  let sx, sy;
+  do {
+    sx = Math.random() * WORLD;
+    sy = Math.random() * WORLD;
+  } while (isWall(sx, sy));
+  return {x: sx, y: sy};
+}
+
+function vibrate(ms) {
+  if (vibrationEnabled && window.navigator && window.navigator.vibrate) {
+    window.navigator.vibrate(ms);
+  }
+}
+
+function formatTime(ms) {
+  let s = Math.floor(ms / 1000);
+  let m = Math.floor(s / 60);
+  s = s % 60;
+  return (m < 10 ? "0"+m : m) + ":" + (s < 10 ? "0"+s : s);
+}
+
+function isReviveAvailable() {
+  // Timer removed: allow immediate revives until MAX_REVIVES is reached.
+  return (typeof continuesUsed === 'undefined') || (continuesUsed < MAX_REVIVES);
+}
+
+function updateReviveButtonState() {
+  const btn = document.getElementById('revive-ad-btn');
+  if (!btn) return;
+
+  // If player already used the maximum revives, disable the button.
+  if (typeof continuesUsed !== 'undefined' && continuesUsed >= MAX_REVIVES) {
+    btn.classList.add('disabled');
+    btn.innerHTML = `<span class="video-icon">\u25B6</span> NO REVIVES LEFT`;
+    btn.title = 'NO REVIVES LEFT';
+    return;
+  }
+
+  // Show dynamic remaining revives when available
+  btn.classList.remove('disabled');
+  btn.innerHTML = `<span class="video-icon">&#9654;</span> ${Math.max(0, MAX_REVIVES - continuesUsed)} Revives Remaining`;
+  btn.title = '';
+}
+
+function updateReviveCountdown() {
+  // Update only the remaining revives display (no cooldown timer)
+  const remEl = document.getElementById('revive-remaining');
+  if (remEl && typeof continuesUsed !== 'undefined') {
+    remEl.textContent = Math.max(0, MAX_REVIVES - continuesUsed);
+  }
+}
+
+function showReviveInfoOverlay() {
+  const overlay = document.getElementById('revive-info-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+  // Update remaining revives display once
+  updateReviveCountdown();
+}
+
+function hideReviveInfoOverlay() {
+  const overlay = document.getElementById('revive-info-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+/* DOM elements (unchanged) */
+const startScreen = document.getElementById('start-screen');
+const menuScreen = document.getElementById('menu-screen');
+const victoryScreen = document.getElementById('victory-screen');
+const statsBox = document.getElementById('stats-box');
+const playBtn = document.getElementById('play-btn');
+const menuBtn = document.getElementById('menu-btn');
+const muteBtn = document.getElementById('mute-btn');
+const closeMenuBtn = document.getElementById('close-menu-btn');
+const continueBtn = document.getElementById('continue-btn');
+const titleText = document.getElementById('title-text');
+const victoryTimeDisplay = document.getElementById('victory-time-display');
+
+const mainBtns = document.getElementById('main-btns');
+const diffBtns = document.getElementById('diff-btns');
+const customSubmenu = document.getElementById('custom-submenu');
+const highscoreDiffBtns = document.getElementById('highscore-diff-btns');
+const highscoreListScreen = document.getElementById('highscore-list-screen');
+const highscoreBtn = document.getElementById('highscore-btn');
+const nameEntryOverlay = document.getElementById('name-entry-overlay');
+const nameEntryInput = document.getElementById('name-entry-input');
+
+const tabSound = document.getElementById('tab-sound');
+const tabSettings = document.getElementById('tab-settings');
+const tabTips = document.getElementById('tab-tips');
+const panelSound = document.getElementById('panel-sound');
+const panelSettings = document.getElementById('panel-settings');
+const panelTips = document.getElementById('panel-tips');
+const trackGrid = document.getElementById('track-grid');
+const swBiome = document.getElementById('sw-biome');
+const swDungeon = document.getElementById('sw-dungeon');
+
+const customPanel = document.getElementById('custom-panel');
+const dropRateSlider = document.getElementById('drop-rate-slider');
+const enemyCountSlider = document.getElementById('enemy-count-slider');
+const enemyDifficultySlider = document.getElementById('enemy-difficulty-slider');
+
+// Add a subtle overlay element for depth/texture without affecting input
+if (!document.getElementById('biome-overlay')) {
+  const ov = document.createElement('div');
+  ov.id = 'biome-overlay';
+  ov.className = 'biome-overlay';
+  document.body.appendChild(ov);
+}
+const dropRateVal = document.getElementById('drop-rate-val');
+const enemyCountVal = document.getElementById('enemy-count-val');
+const enemyDifficultyVal = document.getElementById('enemy-difficulty-val');
+const toggleSound = document.getElementById('toggle-sound');
+const toggleVibration = document.getElementById('toggle-vibration');
+
+const elBiome = document.getElementById('st-biome');
+const elKills = document.getElementById('st-kills');
+const elHearts = document.getElementById('st-hearts'); 
+const elTime = document.getElementById('st-time');
+const elSword = document.getElementById('st-sword');
+const elBow = document.getElementById('st-bow');
+const elDiff = document.getElementById('st-diff');
+
+/* === PAUSE/RESUME HELPERS === */
+function pauseGame(showOverlay = true) {
+  // Record whether the game was active so we can resume later
+  wasActiveBeforePause = gameActive;
+  if (gameActive) {
+    stopAction();
+    // Record when we paused to adjust startTime on resume
+    pauseTimestamp = Date.now();
+    // Save current music state and stop music
+    // If we already have a saved track (e.g., from muting), don't overwrite it with null.
+    if (!savedMusicTrack && Music.currentTrackId) {
+      savedMusicTrack = Music.currentTrackId;
+    }
+    Music.stop();
+  }
+  gameActive = false;
+  
+  // Show overlay if requested (not shown for menu pause)
+  if (showOverlay) {
+    document.getElementById('pause-overlay').classList.remove('hidden');
+    // Hide the start screen so menu button doesn't show
+    startScreen.classList.add('hidden');
+  }
+}
+
+function resumeGame() {
+  // Hide pause overlay
+  document.getElementById('pause-overlay').classList.add('hidden');
+  
+  // Adjust startTime to freeze the clock during pause
+  if (pauseTimestamp > 0) {
+    const pausedDuration = Date.now() - pauseTimestamp;
+    startTime += pausedDuration;
+    pauseTimestamp = 0;
+  }
+  
+  // Always resume music if sound is enabled and a track was saved, regardless of muteBtn state
+  if (savedMusicTrack && !gameOver && gameRunning && soundEnabled) {
+    if (savedMusicTrack.startsWith('overworld_')) {
+      Music.play('overworld');
+    } else if (savedMusicTrack.startsWith('dungeon_')) {
+      Music.play('dungeon');
+    } else if (savedMusicTrack === 'title' || savedMusicTrack === 'victory') {
+      Music.play(savedMusicTrack);
+    }
+    savedMusicTrack = null;
+  }
+  
+  // Resume the game if a run is in progress and not ended
+  if (!gameOver && gameRunning) {
+    gameActive = true;
+    wasActiveBeforePause = false;
+  }
+}
+
+/* Handle canvas taps: pause only on minimap, resume anywhere */
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  let clientX, clientY;
+  if (e.touches && e.touches[0]) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  const x = (clientX - rect.left) * (canvas.width / rect.width);
+  const y = (clientY - rect.top) * (canvas.height / rect.height);
+  return { x, y };
+}
+
+function handleCanvasTap(e) {
+  if (!gameRunning || gameOver) return;
+  if (!startScreen.classList.contains('hidden')) return;
+
+  const pos = getCanvasPos(e);
+  const mmX = 650, mmY = 15, mmW = MAP_SIZE, mmH = MAP_SIZE;
+  const onMinimap = pos.x >= mmX && pos.x <= mmX + mmW && pos.y >= mmY && pos.y <= mmY + mmH;
+
+  if (gameActive) {
+    if (onMinimap) {
+      pauseGame();
+    }
+  } else {
+    // When paused, any tap resumes
+    resumeGame();
+  }
+}
+
+/* === EVENT LISTENERS (unchanged behavior, with pause/resume integration) === */
+const initAudioInteraction = () => {
+  Music.init();
+  // Don't play title music on home screen
+  window.removeEventListener('click', initAudioInteraction);
+  window.removeEventListener('touchstart', initAudioInteraction);
+};
+window.addEventListener('click', initAudioInteraction);
+window.addEventListener('touchstart', initAudioInteraction);
+
+playBtn.addEventListener('click', () => {
+  // Normal play button behavior
+  mainBtns.classList.add('hidden');
+  diffBtns.classList.remove('hidden');
+  titleText.style.display = 'none';
+  document.querySelector('.author-sub').style.display = 'none';
+  statsBox.style.display = 'none';
+});
+
+window.selectDifficulty = (diff) => {
+  if (diff === 'custom') {
+    // Hide difficulty menu, show custom submenu
+    diffBtns.classList.add('hidden');
+    customSubmenu.classList.remove('hidden');
+    return;
+  }
+  currentDifficulty = diff;
+  Music.init();
+  Music.playSFX('start'); 
+  setTimeout(() => {
+    startGame();
+  }, 450);
+};
+
+// Function to reset to main menu from game over
+function _shouldPromptForName(pendingScore) {
+  // First, check local scores (fast). If it fails, no prompt.
+  if (!isHighScore(pendingScore.difficulty, pendingScore.biome, pendingScore.kills)) return Promise.resolve(false);
+
+  // Then check remote/global scores (if available). If the global board is strong, we may still not qualify.
+  return fetchRemoteScores(pendingScore.difficulty)
+    .then(remoteScores => {
+      if (!remoteScores || remoteScores.length === 0) return true;
+      remoteScores.sort(_compareHighScores);
+      const top = remoteScores.slice(0, HS_MAX_ENTRIES);
+      const worst = top[top.length - 1];
+      return pendingScore.kills > worst.kills || (pendingScore.kills === worst.kills && pendingScore.biome > worst.biome);
+    }).catch(() => true); // If remote fails, fall back to local decision.
+}
+
+window.resetToMainMenu = () => {
+  statsBox.style.display = 'none';
+  titleText.innerHTML = "BIONIC<br>BIOME";
+  titleText.style.display = 'block';
+  document.querySelector('.author-sub').style.display = 'block';
+  document.getElementById('game-over-btns').classList.add('hidden');
+  mainBtns.classList.remove('hidden');
+  diffBtns.classList.add('hidden');
+  customSubmenu.classList.add('hidden');
+
+  // If a high-score was detected at game over and the player chose MAIN MENU (i.e., declined revive),
+  // show the name-entry modal now so they can save their score.
+  if (deferNameEntryUntilMenu && pendingScore) {
+    deferNameEntryUntilMenu = false;
+
+    _shouldPromptForName(pendingScore).then(shouldPrompt => {
+      if (shouldPrompt) {
+        showNameEntry(pendingScore.kills, pendingScore.biome, pendingScore.time, pendingScore.revives);
+      }
+    });
+  }
+};
+
+// Navigation functions
+window.backToHome = () => {
+  diffBtns.classList.add('hidden');
+  customSubmenu.classList.add('hidden');
+  highscoreDiffBtns.classList.add('hidden');
+  highscoreListScreen.classList.add('hidden');
+  mainBtns.classList.remove('hidden');
+  titleText.style.display = 'block';
+  document.querySelector('.author-sub').style.display = 'block';
+  if (statsBox.style.display !== 'none') {
+    statsBox.style.display = 'block';
+  }
+};
+
+window.backToDifficulty = () => {
+  customSubmenu.classList.add('hidden');
+  diffBtns.classList.remove('hidden');
+};
+
+let soundTestMode = 'overworld'; 
+function renderTrackButtons() {
+  trackGrid.innerHTML = '';
+  for(let i=1; i<=10; i++) {
+    let b = document.createElement('div');
+    b.className = 'track-btn';
+    b.innerText = i;
+    b.onclick = () => {
+       document.querySelectorAll('.track-btn').forEach(btn => btn.classList.remove('active'));
+       b.classList.add('active');
+       Music.play(soundTestMode, i);
+    };
+    trackGrid.appendChild(b);
+  }
+}
+
+function updateMiniButtons() {
+  if (!muteBtn) return;
+  const show = gameRunning;
+  muteBtn.style.display = show ? 'flex' : 'none';
+  muteBtn.classList.toggle('active', !soundEnabled);
+}
+
+function updateMiniButtonPositions() {
+  if (!muteBtn) return;
+  if (!canvas) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+
+  const mmX = 650;
+  const mmY = 15;
+  const btnSize = 34;
+  const padding = 4;
+
+  const left = rect.left + mmX * scaleX - btnSize - padding;
+  const top = rect.top + mmY * scaleY;
+
+  muteBtn.style.left = `${left}px`;
+  muteBtn.style.top = `${top}px`;
+}
+
+window.addEventListener('resize', () => {
+  updateMiniButtonPositions();
+  updateMiniButtons();
+});
+
+menuBtn.addEventListener('click', () => {
+  // Pause the game whenever the menu is shown
+  pauseGame(false);
+
+  Music.init();
+  startScreen.classList.add('hidden');
+  menuScreen.classList.remove('hidden');
+  renderTrackButtons();
+  tabSettings.click();
+
+  // Ensure toggles reflect current state
+  toggleSound.classList.toggle('active', soundEnabled);
+  toggleVibration.classList.toggle('active', vibrationEnabled);
+
+  updateMiniButtons();
+});
+
+muteBtn.addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  muteBtn.classList.toggle('active', !soundEnabled);
+
+  if (!soundEnabled) {
+    // Save what was playing so we can resume when unmuted.
+    // If we're paused, Music.currentTrackId is likely null (since we stopped it),
+    // so keep the last known track if any.
+    if (!savedMusicTrack && Music.currentTrackId) {
+      savedMusicTrack = Music.currentTrackId;
+    }
+    Music.stop();
+  } else {
+    // Always force resume music if a track was saved and game is running
+    if (savedMusicTrack && gameRunning && !gameOver) {
+      if (savedMusicTrack.startsWith('overworld_')) {
+        Music.play('overworld');
+      } else if (savedMusicTrack.startsWith('dungeon_')) {
+        Music.play('dungeon');
+      } else if (savedMusicTrack === 'title' || savedMusicTrack === 'victory') {
+        Music.play(savedMusicTrack);
+      }
+      savedMusicTrack = null;
+    }
+    // Otherwise, let game logic handle music
+  }
+});
+
+tabSound.addEventListener('click', () => {
+  tabSound.classList.add('active');
+  tabSettings.classList.remove('active');
+  tabTips.classList.remove('active');
+  panelSound.classList.remove('hidden');
+  panelSettings.classList.add('hidden');
+  panelTips.classList.add('hidden');
+});
+
+tabSettings.addEventListener('click', () => {
+  tabSettings.classList.add('active');
+  tabSound.classList.remove('active');
+  tabTips.classList.remove('active');
+  panelSettings.classList.remove('hidden');
+  panelSound.classList.add('hidden');
+  panelTips.classList.add('hidden');
+  Music.stop(); 
+  document.querySelectorAll('.track-btn').forEach(btn => btn.classList.remove('active'));
+});
+
+tabTips.addEventListener('click', () => {
+  tabTips.classList.add('active');
+  tabSound.classList.remove('active');
+  tabSettings.classList.remove('active');
+  panelTips.classList.remove('hidden');
+  panelSound.classList.add('hidden');
+  panelSettings.classList.add('hidden');
+  Music.stop(); 
+  document.querySelectorAll('.track-btn').forEach(btn => btn.classList.remove('active'));
+});
+
+closeMenuBtn.addEventListener('click', () => {
+  Music.stop();
+  menuScreen.classList.add('hidden');
+  startScreen.classList.remove('hidden');
+  // Don't play title music when returning to home
+
+  // Resume the game only if it was active before the menu was opened (resumeGame checks that)
+  resumeGame();
+});
+
+function updateMiniMenuButtonPosition() {
+  if (!miniMenuBtn) return;
+  if (!canvas) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+
+  // Minimap is drawn at (650, 15) in canvas coords, with size MAP_SIZE.
+  const mmX = 650;
+  const mmY = 15;
+  const btnSize = 44;
+  const padding = 6;
+
+  const left = rect.left + mmX * scaleX - btnSize - padding;
+  const top = rect.top + mmY * scaleY;
+
+  miniMenuBtn.style.left = `${left}px`;
+  miniMenuBtn.style.top = `${top}px`;
+
+  // Only show when a game is running (not on main menu)
+  miniMenuBtn.style.display = gameRunning ? 'flex' : 'none';
+}
+
+window.addEventListener('resize', updateMiniMenuButtonPosition);
+
+swBiome.addEventListener('click', () => {
+  swBiome.classList.add('selected');
+  swDungeon.classList.remove('selected');
+  soundTestMode = 'overworld';
+  document.querySelectorAll('.track-btn').forEach(btn => btn.classList.remove('active'));
+  Music.stop();
+});
+
+swDungeon.addEventListener('click', () => {
+  swDungeon.classList.add('selected');
+  swBiome.classList.remove('selected');
+  soundTestMode = 'dungeon';
+  document.querySelectorAll('.track-btn').forEach(btn => btn.classList.remove('active'));
+  Music.stop();
+});
+
+// Custom difficulty sliders
+const dropRateLabels = ['Very Low', 'Low', 'Normal', 'High', 'Very High'];
+const enemyCountLabels = ['Very Low', 'Low', 'Normal', 'High', 'Very High'];
+const enemyDifficultyLabels = ['Very Low', 'Low', 'Normal', 'High', 'Very High'];
+
+dropRateSlider.addEventListener('input', (e) => {
+  customDropRate = parseInt(e.target.value);
+  dropRateVal.textContent = dropRateLabels[customDropRate];
+  updateCustomDifficulty();
+});
+
+enemyCountSlider.addEventListener('input', (e) => {
+  customEnemyCount = parseInt(e.target.value);
+  enemyCountVal.textContent = enemyCountLabels[customEnemyCount];
+  updateCustomDifficulty();
+});
+
+enemyDifficultySlider.addEventListener('input', (e) => {
+  customEnemyDifficulty = parseInt(e.target.value);
+  enemyDifficultyVal.textContent = enemyDifficultyLabels[customEnemyDifficulty];
+  updateCustomDifficulty();
+});
+
+// Settings toggles
+toggleSound.addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  toggleSound.classList.toggle('active');
+  muteBtn.classList.toggle('active', !soundEnabled);
+  if (!soundEnabled) {
+    Music.stop();
+  }
+});
+
+toggleVibration.addEventListener('click', () => {
+  vibrationEnabled = !vibrationEnabled;
+  toggleVibration.classList.toggle('active');
+  vibBtn.classList.toggle('active', !vibrationEnabled);
+  if (vibrationEnabled) {
+    vibrate(50); // Test vibration
+  }
+});
+
+function updateCustomDifficulty() {
+  // Enemy count settings: 0=100+30, 1=150+45, 2=200+60, 3=250+72, 4=300+85
+  const enemyBases = [100, 150, 200, 250, 300];
+  const enemySteps = [30, 45, 60, 72, 85];
+  const enemySpeeds = [0.06, 0.10, 0.15, 0.19, 0.22];
+  const bossHps = [300, 450, 600, 750, 840];
+  const bossDefs = [0.25, 0.35, 0.5, 0.6, 0.7];
+  const bossSpeeds = [0, 0, 0.25, 0.4, 0.5];
+  const enemyDamageMults = [0.7, 0.85, 1.0, 1.25, 1.5];
+  const enemyHpMults = [0.8, 1.0, 1.2, 1.5, 1.8];
+  
+  DIFFICULTY_SETTINGS.custom.enemyCountBase = enemyBases[customEnemyCount];
+  DIFFICULTY_SETTINGS.custom.enemyCountStep = enemySteps[customEnemyCount];
+  DIFFICULTY_SETTINGS.custom.enemySpeedStep = enemySpeeds[customEnemyCount];
+  DIFFICULTY_SETTINGS.custom.bossHpMult = bossHps[customEnemyCount];
+  DIFFICULTY_SETTINGS.custom.bossDefMult = bossDefs[customEnemyCount];
+  DIFFICULTY_SETTINGS.custom.bossSpeedAdd = bossSpeeds[customEnemyCount];
+  DIFFICULTY_SETTINGS.custom.enemyDamageMult = enemyDamageMults[customEnemyDifficulty];
+  DIFFICULTY_SETTINGS.custom.enemyHpMult = enemyHpMults[customEnemyDifficulty];
+}
+
+window.startCustomGame = () => {
+  currentDifficulty = 'custom';
+  updateCustomDifficulty();
+  Music.init();
+  Music.playSFX('start'); 
+  setTimeout(() => {
+    startGame();
+  }, 450);
+};
+
+/* === HIGH SCORES SYSTEM === */
+const HS_STORAGE_KEY = 'bionicBiome_highscores';
+const HS_MAX_ENTRIES = 5;
+let pendingScore = null; // holds data while name entry is shown
+let deferNameEntryUntilMenu = false; // when true, show name entry after player chooses MAIN MENU post-game-over
+
+// Firebase Realtime Database URL (anonymous/simple board)
+const DATABASE_URL = 'https://bionic-biome-scoreboard-default-rtdb.firebaseio.com';
+
+// Send a score object to Firebase at /scores.json using fetch().
+// This keeps multiple runs per player (instead of overwriting by name).
+function sendScoreToFirebase(playerName, scoreData) {
+  if (!playerName) return;
+  // Keep a safe name for display / debugging, but do not use it as the DB key.
+  const safeName = encodeURIComponent(playerName);
+  const url = `${DATABASE_URL}/scores.json`;
+  try {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...scoreData, safeName })
+    }).then(res => {
+      if (!res.ok) console.warn('Failed to send score to Firebase', res.statusText);
+    }).catch(err => console.warn('Error sending score to Firebase', err));
+  } catch (e) {
+    console.warn('Could not send score to Firebase', e);
+  }
+}
+
+// Make a filesystem/DB-safe key from an entered name: uppercase, allow A-Z0-9,_- only.
+function makeSafeKey(name) {
+  if (!name) return 'ANON_' + Math.floor(Date.now() / 1000);
+  // strip non-alphanumeric, keep underscore and dash
+  let k = name.toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+  if (!k) k = 'ANON_' + Math.floor(Date.now() / 1000);
+  return k;
+}
+
+function getHighScores(difficulty) {
+  try {
+    const all = JSON.parse(localStorage.getItem(HS_STORAGE_KEY) || '{}');
+    const scores = (all[difficulty] || []).slice();
+    scores.sort(_compareHighScores);
+    return scores.slice(0, HS_MAX_ENTRIES);
+  } catch(e) { return []; }
+}
+
+function saveHighScores(difficulty, scores) {
+  try {
+    const all = JSON.parse(localStorage.getItem(HS_STORAGE_KEY) || '{}');
+    const sorted = (scores || []).slice();
+    sorted.sort(_compareHighScores);
+    all[difficulty] = sorted.slice(0, HS_MAX_ENTRIES);
+    localStorage.setItem(HS_STORAGE_KEY, JSON.stringify(all));
+  } catch(e) { console.warn('Could not save high scores', e); }
+}
+
+function _compareHighScores(a, b) {
+  // Primary: kills (enemy count), secondary: biome, tertiary: faster time
+  // Safely handle missing properties by treating them as 0.
+  const ak = (a && typeof a.kills === 'number') ? a.kills : 0;
+  const bk = (b && typeof b.kills === 'number') ? b.kills : 0;
+  const abiome = (a && typeof a.biome === 'number') ? a.biome : 0;
+  const bbiome = (b && typeof b.biome === 'number') ? b.biome : 0;
+  const atime = (a && typeof a.time === 'number') ? a.time : 0;
+  const btime = (b && typeof b.time === 'number') ? b.time : 0;
+  return (bk - ak) || (bbiome - abiome) || (atime - btime);
+}
+
+function isHighScore(difficulty, biome, kills) {
+  if (difficulty === 'custom') return false; // no leaderboard for custom
+  if (!kills || kills <= 0) return false; // don't prompt for no kills
+
+  // Use the full stored list (not just a pre-sliced top 5) to ensure we compare
+  // against the actual best scores.
+  let scores;
+  try {
+    const all = JSON.parse(localStorage.getItem(HS_STORAGE_KEY) || '{}');
+    scores = (all[difficulty] || []).slice();
+  } catch (e) {
+    scores = [];
+  }
+  scores.sort(_compareHighScores);
+  scores = scores.slice(0, HS_MAX_ENTRIES);
+  if (scores.length < HS_MAX_ENTRIES) return true;
+  const worst = scores[scores.length - 1];
+  return kills > worst.kills || (kills === worst.kills && biome > worst.biome);
+}
+
+function addHighScore(difficulty, name, kills, biome, time, revives) {
+  const scores = getHighScores(difficulty);
+  scores.push({ name: name.toUpperCase(), kills, biome, time, revives });
+  scores.sort(_compareHighScores);
+  saveHighScores(difficulty, scores);
+}
+
+// Profanity filter — blocks common offensive words/slurs at name entry
+const _BLOCKED_WORDS = [
+  'fuck','shit','damn','hell','ass','bitch','cunt','dick','cock','piss',
+  'slut','whore','fag','nigga','nigger','retard','rape','nazi','penis',
+  'vagina','anus','dildo','porn','sex','tits','boob','wank','twat','prick',
+  'bastard','stfu','wtf','lmao','kys','die','kill'
+];
+function isNameClean(name) {
+  const lower = name.toLowerCase().replace(/[^a-z]/g, '');
+  for (let i = 0; i < _BLOCKED_WORDS.length; i++) {
+    if (lower.includes(_BLOCKED_WORDS[i])) return false;
+  }
+  return true;
+}
+
+function showNameEntry(kills, biome, time, revives) {
+  pendingScore = { difficulty: currentDifficulty, kills, biome, time, revives };
+  document.getElementById('name-entry-score-text').textContent =
+    'BIOME ' + biome + ' \u2022 ' + kills + ' ENEMY COUNT \u2022 ' + formatTime(time);
+  nameEntryInput.value = '';
+  nameEntryInput.style.borderColor = 'rgba(0,230,255,0.3)';
+  // Ensure overlay is visible even if inline styles or service-worker cache previously hid it
+  nameEntryOverlay.classList.remove('hidden');
+  try {
+    nameEntryOverlay.style.setProperty('display', 'flex', 'important');
+  } catch (e) {
+    nameEntryOverlay.style.display = 'flex';
+  }
+  setTimeout(() => nameEntryInput.focus(), 100);
+}
+
+window.saveHighScore = () => {
+  if (!pendingScore) { skipHighScore(); return; }
+  let name = nameEntryInput.value.trim();
+  if (!name) name = 'ANON';
+  name = name.substring(0, 10).toUpperCase();
+  if (!isNameClean(name)) {
+    nameEntryInput.style.borderColor = 'rgba(231,76,60,0.8)';
+    nameEntryInput.value = '';
+    nameEntryInput.placeholder = 'TRY AGAIN';
+    nameEntryInput.focus();
+    return;
+  }
+  addHighScore(pendingScore.difficulty, name, pendingScore.kills, pendingScore.biome, pendingScore.time, pendingScore.revives);
+
+  // Send the entered (filtered) name and score to Firebase
+  try {
+    const scorePayload = {
+      name: name,
+      difficulty: pendingScore.difficulty,
+      kills: pendingScore.kills,
+      biome: pendingScore.biome,
+      time: pendingScore.time,
+      revives: pendingScore.revives,
+      ts: Date.now()
+    };
+    // Use a sanitized key for the DB path, but keep the display name in the payload
+    const keyName = makeSafeKey(name);
+    sendScoreToFirebase(keyName, scorePayload);
+  } catch (e) {
+    console.warn('Failed to send saved high score to Firebase', e);
+  }
+
+  // Hide overlay reliably
+  nameEntryOverlay.classList.add('hidden');
+  try {
+    nameEntryOverlay.style.setProperty('display', 'none', 'important');
+  } catch (e) {
+    nameEntryOverlay.style.display = 'none';
+  }
+  pendingScore = null;
+};
+
+window.skipHighScore = () => {
+  nameEntryOverlay.classList.add('hidden');
+  try {
+    nameEntryOverlay.style.setProperty('display', 'none', 'important');
+  } catch (e) {
+    nameEntryOverlay.style.display = 'none';
+  }
+  pendingScore = null;
+};
+
+// Allow pressing Enter to save
+nameEntryInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { saveHighScore(); }
+});
+
+// High scores navigation
+highscoreBtn.addEventListener('click', () => {
+  mainBtns.classList.add('hidden');
+  highscoreDiffBtns.classList.remove('hidden');
+  titleText.style.display = 'none';
+  document.querySelector('.author-sub').style.display = 'none';
+  statsBox.style.display = 'none';
+});
+
+window.backFromHighScoreDiff = () => {
+  highscoreDiffBtns.classList.add('hidden');
+  mainBtns.classList.remove('hidden');
+  titleText.style.display = 'block';
+  document.querySelector('.author-sub').style.display = 'block';
+};
+
+window.backFromHighScoreList = () => {
+  highscoreListScreen.classList.add('hidden');
+  highscoreDiffBtns.classList.remove('hidden');
+};
+
+window.showHighScoresFor = (difficulty) => {
+  // Show local header immediately, then fetch global scores
+  highscoreDiffBtns.classList.add('hidden');
+  const diffName = DIFFICULTY_SETTINGS[difficulty]?.name || difficulty.toUpperCase();
+  document.getElementById('hs-list-title').textContent = diffName + ' - TOP ' + HS_MAX_ENTRIES + ' (GLOBAL)';
+  const body = document.getElementById('hs-list-body');
+
+  // Show loading state
+  body.innerHTML = '<div class="hs-empty">LOADING GLOBAL SCORES<br><br>Please wait...</div>';
+  highscoreListScreen.classList.remove('hidden');
+
+  // Attempt to fetch remote/global scores; fall back to local stored scores on error or empty result
+  fetchRemoteScores(difficulty).then(scores => {
+    if (!scores || scores.length === 0) {
+      const local = getHighScores(difficulty);
+      if (local.length === 0) {
+        var article = /^[aeiou]/i.test(diffName) ? 'AN' : 'A';
+        body.innerHTML = '<div class="hs-empty">NO SCORES YET<br><br>PLAY ' + article + ' ' + diffName + ' GAME<br>TO SET A RECORD!</div>';
+        return;
+      }
+      scores = local;
+    }
+
+    // Ensure scores are ordered by kills, then biome, then time.
+    scores.sort(_compareHighScores);
+    scores = scores.slice(0, HS_MAX_ENTRIES);
+
+    let html = '<table class="hs-table"><thead><tr>' +
+      '<th class="hs-rank">#</th><th>NAME</th><th>BIOME</th><th>ENEMY COUNT</th><th>TIME</th>' +
+      '</tr></thead><tbody>';
+    for (let i = 0; i < scores.length; i++) {
+      const s = scores[i];
+      html += '<tr>' +
+        '<td class="hs-rank">' + (i + 1) + '</td>' +
+        '<td>' + escapeHtml(s.name || 'ANON') + '</td>' +
+        '<td>' + (s.biome || '') + '</td>' +
+        '<td>' + (s.kills || 0) + '</td>' +
+        '<td>' + (s.time ? formatTime(s.time) : '00:00') + '</td>' +
+        '</tr>';
+    }
+    html += '</tbody></table>';
+    body.innerHTML = html;
+  }).catch(err => {
+    console.warn('Could not fetch remote scores', err);
+    const local = getHighScores(difficulty);
+    if (local.length === 0) {
+      var article = /^[aeiou]/i.test(diffName) ? 'AN' : 'A';
+      body.innerHTML = '<div class="hs-empty">NO SCORES YET<br><br>PLAY ' + article + ' ' + diffName + ' GAME<br>TO SET A RECORD!</div>';
+      return;
+    }
+    let html = '<table class="hs-table"><thead><tr>' +
+      '<th class="hs-rank">#</th><th>NAME</th><th>BIOME</th><th>ENEMY COUNT</th><th>TIME</th>' +
+      '</tr></thead><tbody>';
+    for (let i = 0; i < Math.min(local.length, HS_MAX_ENTRIES); i++) {
+      const s = local[i];
+      html += '<tr>' +
+        '<td class="hs-rank">' + (i + 1) + '</td>' +
+        '<td>' + escapeHtml(s.name) + '</td>' +
+        '<td>' + s.biome + '</td>' +
+        '<td>' + s.kills + '</td>' +
+        '<td>' + formatTime(s.time) + '</td>' +
+        '</tr>';
+    }
+    html += '</tbody></table>';
+    body.innerHTML = html;
+  });
+};
+
+// Fetch global scores from the Firebase database and return a sorted array for the given difficulty.
+function fetchRemoteScores(difficulty) {
+  const url = `${DATABASE_URL}/scores.json`;
+  return fetch(url, { cache: 'no-store' }).then(res => {
+    if (!res.ok) throw new Error('Network response not ok');
+    return res.json();
+  }).then(obj => {
+    if (!obj) return [];
+    const arr = Object.keys(obj).map(k => obj[k]).filter(Boolean);
+    // Filter by difficulty and sort using the same comparator as the local leaderboard.
+    const filtered = arr.filter(a => (a.difficulty || '') === difficulty);
+    filtered.sort(_compareHighScores);
+    return filtered;
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+continueBtn.addEventListener('click', () => {
+  Music.playSFX('start');
+  setTimeout(() => {
+    victoryScreen.classList.add('hidden');
+    gameActive = true;
+    gameRunning = true;
+    biomeLevel++;
+    generateWorld(false);
+  }, 450);
+});
+
+const reviveConfirmBtn = document.getElementById('revive-confirm-btn');
+if (reviveConfirmBtn) {
+  reviveConfirmBtn.addEventListener('click', () => {
+    hideReviveInfoOverlay();
+    // Show the pause overlay so the player can tap to resume normally.
+    pauseGame(true);
+  });
+}
+
+/* === GAME START / OVER / WORLD GENERATION (unchanged semantics except mark gameRunning) === */
+function showGameOver() {
+  gameActive = false;
+  gameOver = true;
+  gameRunning = false;
+  Music.playSFX('gameover');
+  
+  elBiome.innerText = biomeLevel;
+  elKills.innerText = enemiesKilled;
+  elHearts.innerText = heartsCollected;
+  elTime.innerText = formatTime(Date.now() - startTime);
+  elSword.innerText = player.swordLvl;
+  elBow.innerText = player.bowLvl;
+  elDiff.innerText = (DIFFICULTY_SETTINGS[currentDifficulty]?.name || currentDifficulty).toUpperCase();
+  document.getElementById('st-continues').innerText = continuesUsed;
+
+  titleText.innerText = "RUN OVER"; 
+  titleText.style.display = 'block';
+  document.querySelector('.author-sub').style.display = 'none';
+  
+  statsBox.style.display = "block";
+  
+  // Reset the game over state before showing
+  gameOver = false;
+  
+  // Check for high score (non-custom only)
+  const runTime = Date.now() - startTime;
+  if (isHighScore(currentDifficulty, biomeLevel, enemiesKilled)) {
+    // Defer showing the name entry until the player explicitly chooses MAIN MENU (i.e., commits to not reviving)
+    pendingScore = { difficulty: currentDifficulty, kills: enemiesKilled, biome: biomeLevel, time: runTime, revives: continuesUsed };
+    document.getElementById('name-entry-score-text').textContent =
+      'BIOME ' + biomeLevel + '  ' + enemiesKilled + ' ENEMY COUNT  ' + formatTime(runTime);
+    deferNameEntryUntilMenu = true;
+  }
+  
+  // Hide main buttons, show game over button
+  mainBtns.classList.add('hidden');
+  document.getElementById('game-over-btns').classList.remove('hidden');
+  diffBtns.classList.add('hidden');
+  customSubmenu.classList.add('hidden');
+  
+  startScreen.classList.remove('hidden');
+
+  // Update revive button based on cooldown
+  updateReviveButtonState();
+  if (!reviveButtonInterval) {
+    reviveButtonInterval = setInterval(updateReviveButtonState, 1000);
+  }
+}
+
+function showVictoryScreen() {
+    // When victory screen appears, pause the active play. continueBtn will resume appropriately.
+    wasActiveBeforePause = gameActive;
+    gameActive = false;
+
+    Music.play('victory');
+    let finalTime = Date.now() - startTime;
+    victoryTimeDisplay.innerText = formatTime(finalTime);
+    var contEl = document.getElementById('victory-continues');
+    if (contEl) {
+      contEl.innerText = continuesUsed > 0
+        ? 'REVIVES USED: ' + continuesUsed
+        : 'NO REVIVES USED!';
+    }
+    victoryScreen.classList.remove('hidden');
+}
+
+function startGame() {
+  // Stop updating the revive button while in a run (it will be updated again upon game over)
+  if (reviveButtonInterval) {
+    clearInterval(reviveButtonInterval);
+    reviveButtonInterval = null;
+  }
+
+  soundEnabled = true;
+  muteBtn.classList.remove('active');
+  startScreen.classList.add('hidden');
+  victoryScreen.classList.add('hidden');
+  // Mark the game as logically running and active (unless another mechanism paused it)
+  gameRunning = true;
+  gameActive = true;
+  updateMiniButtons();
+  updateMiniButtonPositions();
+  generateWorld(true);
+}
+
+function generateWorld(reset) {
+  world = { grid: [], enemies: [], entrance: {x: 0, y: 0}, boss: null };
+  flowMap = Array(MAP_SIZE).fill().map(() => Array(MAP_SIZE).fill(9999));
+  flowAccSeconds = 0;
+  
+  Music.play('overworld'); 
+
+  let wallChance = 0.06;
+
+  for (let y = 0; y < MAP_SIZE; y++) {
+    world.grid[y] = [];
+    for (let x = 0; x < MAP_SIZE; x++) {
+      let isBorder = (x === 0 || y === 0 || x === MAP_SIZE - 1 || y === MAP_SIZE - 1);
+      let isWallTile = isBorder || (Math.random() < wallChance);
+      world.grid[y][x] = isWallTile ? 1 : 0;
+    }
+  }
+
+  if (reset) {
+    let sp = findSafePos();
+    // use MAX_HP constant for player's max HP
+    player = { x: sp.x, y: sp.y, hp: 10, max: MAX_HP, swordLvl: 1, bowLvl: 1, dir: 0, swing: 0, hitTimer: 0 };
+    player.glowColor = biomes[(biomeLevel - 1) % biomes.length].boss || biomes[(biomeLevel - 1) % biomes.length].enemy;
+    biomeLevel = 1;
+    startTime = Date.now();
+    enemiesKilled = 0;
+    heartsCollected = 0;
+    continuesUsed = 0;
+    beatGameTime = null;
+  } else {
+    let sp = findSafePos();
+    player.x = sp.x;
+    player.y = sp.y;
+    player.glowColor = biomes[(biomeLevel - 1) % biomes.length].boss || biomes[(biomeLevel - 1) % biomes.length].enemy;
+  }
+
+  shots = [];
+  drops = [];
+  inDungeon = false;
+  gameOver = false;
+  explored = Array(MAP_SIZE).fill().map(() => Array(MAP_SIZE).fill(false));
+
+  let ep = findSafePos();
+  while (Math.hypot(ep.x - player.x, ep.y - player.y) < 1500) ep = findSafePos();
+  world.entrance = ep;
+
+  let settings = DIFFICULTY_SETTINGS[currentDifficulty];  
+  const dmgMult = settings.enemyDamageMult || 1;
+  const hpMult = settings.enemyHpMult || 1;
+  let scaledDmg = Math.max(1, Math.round((1 + Math.floor((biomeLevel - 1) * 0.25)) * dmgMult));
+  let enemyCount = settings.enemyCountBase + (biomeLevel * settings.enemyCountStep);
+  let enemyHp = Math.max(1, Math.round(hpMult));
+
+  for (let i = 0; i < enemyCount; i++) {
+    // pick a position separated from player and other enemies
+    let enp;
+    const minDist = 40;
+    let attempts = 0;
+    do {
+      enp = findSafePos();
+      attempts++;
+      if (Math.hypot(enp.x - player.x, enp.y - player.y) <= 500) continue;
+    } while ((Math.hypot(enp.x - player.x, enp.y - player.y) <= 500 ||
+              world.enemies.some(e => Math.hypot(enp.x - e.x, enp.y - e.y) < minDist))
+             && attempts < 1000);
+
+    if (Math.hypot(enp.x - player.x, enp.y - player.y) > 500) {
+      world.enemies.push({ 
+        x: enp.x, 
+        y: enp.y, 
+        hp: enemyHp, 
+        dmg: scaledDmg, 
+        atkDelay: 0, 
+        hitTimer: 0,
+        color: biomes[(biomeLevel - 1) % biomes.length].enemy
+      });
+    }
+  }
+}
+
+/* === PATHFINDING (unchanged) === */
+function updateFlowField() {
+  for(let y=0; y<MAP_SIZE; y++) {
+    for(let x=0; x<MAP_SIZE; x++) {
+      flowMap[y][x] = 9999;
+    }
+  }
+  let pTx = Math.floor(player.x / TILE);
+  let pTy = Math.floor(player.y / TILE);
+  if(pTx<0 || pTy<0 || pTx>=MAP_SIZE || pTy>=MAP_SIZE) return;
+
+  let queue = [];
+  flowMap[pTy][pTx] = 0;
+  queue.push({x: pTx, y: pTy});
+  let visitedCount = 0;
+    
+  while(queue.length > 0) {
+    let curr = queue.shift();
+    let dist = flowMap[curr.y][curr.x];
+    // propagate everywhere (previously there was a cap of 25 to reduce work)
+    const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+    for(let i=0; i<dirs.length; i++) {
+      let nx = curr.x + dirs[i][0];
+      let ny = curr.y + dirs[i][1];
+      if(nx>=0 && ny>=0 && nx<MAP_SIZE && ny<MAP_SIZE) {
+        if(world.grid[ny][nx] === 0 && flowMap[ny][nx] === 9999) {
+          flowMap[ny][nx] = dist + 1;
+          queue.push({x: nx, y: ny});
+        }
+      }
+    }
+    visitedCount++;
+    if(visitedCount > 1000) break; 
+  }
+}
+
+/* === CONTROLS & ACTION (minor change: shots now store per-second velocities) === */
+const keys = {};
+let touchX = 0, touchY = 0, fireInterval = null;
+
+const startAction = () => {
+  if (!fireInterval && gameActive) {
+    doAction();
+    fireInterval = setInterval(doAction, FIRE_INTERVAL_MS); 
+  }
+};
+const stopAction = () => {
+  clearInterval(fireInterval);
+  fireInterval = null;
+};
+
+window.addEventListener("keydown", e => {
+  if(!keys[e.code]) { 
+      keys[e.code] = true;
+      if (e.code === "Space") startAction();
+  }
+});
+window.addEventListener("keyup", e => {
+  keys[e.code] = false;
+  if (e.code === "Space") stopAction();
+});
+
+const joy = document.getElementById("joy");
+const knob = document.getElementById("knob");
+const actBtn = document.getElementById("act");
+
+joy.addEventListener("touchstart", handleTouch, {passive: false});
+joy.addEventListener("touchmove", handleTouch, {passive: false});
+joy.addEventListener("touchend", () => {
+  touchX = 0; touchY = 0;
+  knob.style.transform = "translate(0,0)";
+});
+
+function handleTouch(e) {
+  if (!gameActive) return;
+  e.preventDefault();
+  let t = e.touches[0];
+  for (let i = 0; i < e.touches.length; i++) if (joy.contains(e.touches[i].target)) t = e.touches[i];
+    
+  let r = joy.getBoundingClientRect();
+  let dx = t.clientX - (r.left + r.width / 2);
+  let dy = t.clientY - (r.top + r.height / 2);
+  let d = Math.min(r.width / 2, Math.hypot(dx, dy));
+  let ang = Math.atan2(dy, dx);
+    
+  touchX = Math.cos(ang) * (d / (r.width / 2));
+  touchY = Math.sin(ang) * (d / (r.width / 2));
+  knob.style.transform = "translate(" + (touchX * 40) + "px," + (touchY * 40) + "px)";
+}
+
+actBtn.addEventListener("touchstart", e => {
+  e.preventDefault();
+  if (!gameActive) return; 
+  startAction();
+}, {passive: false});
+
+actBtn.addEventListener("touchend", stopAction);
+actBtn.addEventListener("touchcancel", stopAction);
+
+function doAction() {
+  player.swing = 5; 
+  // create shot velocities in px/second so movement is dt-correct
+  shots.push({
+    x: player.x,
+    y: player.y,
+    dx: Math.cos(player.dir) * ARROW_SPEED_PPS,
+    dy: Math.sin(player.dir) * ARROW_SPEED_PPS,
+    dmg: Math.max(1, player.bowLvl)
+  });
+}
+
+/* === UPDATE: now accepts dt (seconds) and uses per-second velocities === */
+function update(dt) {
+  if (!gameActive || gameOver) return;
+
+  // Player movement: touch/keys produce unit direction vector; movement uses per-second speed * dt
+  let mx = (keys.ArrowLeft || keys.KeyA ? -1 : keys.ArrowRight || keys.KeyD ? 1 : 0) + touchX;
+  let my = (keys.ArrowUp || keys.KeyW ? -1 : keys.ArrowDown || keys.KeyS ? 1 : 0) + touchY;
+    
+  let m = Math.hypot(mx, my);
+  if (m > 0.1) {
+    mx /= m; my /= m;
+    player.dir = Math.atan2(my, mx);
+    let nx = player.x + mx * PLAYER_SPEED_PPS * dt;
+    let ny = player.y + my * PLAYER_SPEED_PPS * dt;
+    if (!isWall(nx, player.y)) player.x = Math.max(16, Math.min(WORLD - 16, nx));
+    if (!isWall(player.x, ny)) player.y = Math.max(16, Math.min(WORLD - 16, ny));
+  }
+
+  // Mark explored
+  let tx = Math.floor(player.x / TILE), ty = Math.floor(player.y / TILE);
+  for (let y = ty - 4; y <= ty + 4; y++) {
+    for (let x = tx - 4; x <= tx + 4; x++) {
+      if (x >= 0 && y >= 0 && x < MAP_SIZE && y < MAP_SIZE) explored[y][x] = true;
+    }
+  }
+
+  // Flow field update every ~16 frames originally => ~0.2667s; accumulate dt
+  flowAccSeconds += dt;
+  if (flowAccSeconds > (16 / FPS)) {
+    updateFlowField();
+    flowAccSeconds = 0;
+  }
+
+  // Timers: decrement by frames equivalent = dt * FPS so existing numeric frame-based values work
+  if (player.swing > 0) player.swing -= dt * FPS;
+  if (player.hitTimer > 0) player.hitTimer -= dt * FPS;
+
+  // Enemy movement: compute per-frame-style speed then convert to per-second
+  let settings = DIFFICULTY_SETTINGS[currentDifficulty];
+  const CURRENT_ENEMY_SPEED = 4.6 + ((biomeLevel - 1) * settings.enemySpeedStep); // px/frame
+  const CURRENT_ENEMY_SPEED_PPS = CURRENT_ENEMY_SPEED * FPS; // px/sec
+
+  world.enemies.forEach(e => {
+    if (e.hitTimer > 0) e.hitTimer -= dt * FPS;
+
+    let d = Math.hypot(player.x - e.x, player.y - e.y);
+    if (d < 450) { 
+      let vx = 0, vy = 0;
+      let etx = Math.floor(e.x / TILE);
+      let ety = Math.floor(e.y / TILE);
+        
+      if(etx>=0 && ety>=0 && etx<MAP_SIZE && ety<MAP_SIZE) {
+        let bestDist = flowMap[ety][etx];
+        let bestDir = null;
+        let neighbors = [
+            {x:0, y:-1}, {x:0, y:1}, {x:-1, y:0}, {x:1, y:0},
+            {x:-1, y:-1}, {x:1, y:-1}, {x:-1, y:1}, {x:1, y:1}
+        ];
+        neighbors.forEach(n => {
+            let nTx = etx + n.x;
+            let nTy = ety + n.y;
+            if(nTx>=0 && nTy>=0 && nTx<MAP_SIZE && nTy<MAP_SIZE) {
+                if(flowMap[nTy][nTx] < bestDist) {
+                    bestDist = flowMap[nTy][nTx];
+                    bestDir = n;
+                }
+            }
+        });
+        if (bestDir) {
+           vx = bestDir.x; vy = bestDir.y;
+           let vm = Math.hypot(vx, vy);
+           if(vm > 0) { vx/=vm; vy/=vm; }
+        } else {
+           vx = (player.x - e.x)/d; vy = (player.y - e.y)/d;
+        }
+      }
+        
+      let nx = e.x + vx * CURRENT_ENEMY_SPEED_PPS * dt;
+      let ny = e.y + vy * CURRENT_ENEMY_SPEED_PPS * dt;
+      
+      let distToPlayer = Math.hypot(nx - player.x, ny - player.y);
+      if (distToPlayer > 30) {
+        // try the primary movement first
+        let moved = false;
+        if (!isWall(nx, e.y)) { e.x = nx; moved = true; }
+        if (!isWall(e.x, ny)) { e.y = ny; moved = true; }
+
+        // if both axes were blocked by walls, attempt a minor detour
+        if (!moved) {
+          // perpendicular directions to the desired vector
+          const perpOptions = [
+            {x: vy, y: -vx}, // right
+            {x: -vy, y: vx}  // left
+          ];
+          for (let opt of perpOptions) {
+            let ax = e.x + opt.x * CURRENT_ENEMY_SPEED_PPS * dt;
+            let ay = e.y + opt.y * CURRENT_ENEMY_SPEED_PPS * dt;
+            if (!isWall(ax, ay)) {
+              e.x = ax;
+              e.y = ay;
+              moved = true;
+              break;
+            }
+          }
+        }
+
+        // force enemies back into free space if a rare collision slipped through
+        if (isWall(e.x, e.y)) {
+          let etx = Math.floor(e.x / TILE);
+          let ety = Math.floor(e.y / TILE);
+          const fallbackDirs = [
+            {x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}
+          ];
+          for (let d of fallbackDirs) {
+            let ntx = etx + d.x;
+            let nty = ety + d.y;
+            if (ntx>=0 && nty>=0 && ntx<MAP_SIZE && nty<MAP_SIZE && world.grid[nty][ntx]===0) {
+              e.x = (ntx + 0.5) * TILE;
+              e.y = (nty + 0.5) * TILE;
+              break;
+            }
+          }
+        }
+
+        // enforce separation between enemies (max 80% overlap)
+        const overlapThresh = PLAYER_RAD * 2 * 0.8; // ~80% of combined diameter
+        world.enemies.forEach(o => {
+          if (o !== e) {
+            let dx = e.x - o.x, dy = e.y - o.y;
+            let d = Math.hypot(dx, dy);
+            if (d > 0 && d < overlapThresh) {
+              let push = (overlapThresh - d) / 2;
+              dx /= d; dy /= d;
+              e.x += dx * push;
+              e.y += dy * push;
+              o.x -= dx * push;
+              o.y -= dy * push;
+            }
+          }
+        });
+        // ensure the current enemy didn't get shoved into a wall by separation
+        if (isWall(e.x, e.y)) {
+          let etx = Math.floor(e.x / TILE);
+          let ety = Math.floor(e.y / TILE);
+          const dirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+          for (let d of dirs) {
+            let ntx = etx + d.x;
+            let nty = ety + d.y;
+            if (ntx>=0 && nty>=0 && ntx<MAP_SIZE && nty<MAP_SIZE && world.grid[nty][ntx]===0) {
+              e.x = (ntx + 0.5) * TILE;
+              e.y = (nty + 0.5) * TILE;
+              break;
+            }
+          }
+        }
+      }
+        
+      if (d < (PLAYER_RAD + 20) && (e.atkDelay <= 0)) {
+        let angleToEnemy = Math.atan2(e.y - player.y, e.x - player.x);
+        let angleDiff = Math.abs(angleToEnemy - player.dir);
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        angleDiff = Math.abs(angleDiff);
+
+        let isBackstab = angleDiff > (Math.PI / 1.5);
+        let damage = e.dmg;
+        if(isBackstab) {
+           damage = Math.floor(damage * 1.5); 
+           vibrate([50, 50, 50]); 
+        } else {
+           vibrate(200); 
+        }
+
+        player.hp -= damage;
+        player.hitTimer = 8; // frame-based value
+        e.atkDelay = 45; // frame-based value
+      }
+    }
+    if (e.atkDelay > 0) e.atkDelay -= dt * FPS;
+    
+    // MELEE HIT (player.swing is decremented by dt*FPS above)
+    if (player.swing > 0 && d < (PLAYER_RAD + 45)) {
+      let angleToEnemy = Math.atan2(e.y - player.y, e.x - player.x);
+      let diff = angleToEnemy - player.dir;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+
+      if (Math.abs(diff) < 1.75) {
+          e.hp -= Math.max(1, player.swordLvl);
+          e.hitTimer = 5; 
+          vibrate(40);
+          if (e.hp <= 0) {
+            spawnDrop(e.x, e.y);
+            enemiesKilled++; 
+          }
+      }
+    }
+  });
+
+  // Shots: dx/dy are in px/sec. Move by dx*dt.
+  shots = shots.filter(s => {
+    s.x += s.dx * dt;
+    s.y += s.dy * dt;
+    if (isWall(s.x, s.y)) return false;
+    let hit = false;
+    world.enemies.forEach(e => {
+      if (Math.hypot(s.x - e.x, s.y - e.y) < 25) {
+        e.hp -= s.dmg; hit = true;
+        e.hitTimer = 5; 
+        vibrate(40); 
+        if (e.hp <= 0) {
+           spawnDrop(e.x, e.y);
+           enemiesKilled++; 
+        }
+      }
+    });
+    
+    if (inDungeon && world.boss && Math.hypot(s.x - world.boss.x, s.y - world.boss.y) < 60) {
+      let damage = Math.max(1, s.dmg - world.boss.defense);
+      world.boss.hp -= damage; 
+      hit = true;
+      world.boss.hitTimer = 5; 
+      player.hitTimer = 6; // slight flash when hitting boss
+      vibrate(40);
+    }
+    return !hit && s.x > 0 && s.x < WORLD && s.y > 0 && s.y < WORLD;
+  });
+
+  world.enemies = world.enemies.filter(e => e.hp > 0);
+
+  // BOSS LOGIC: convert speed to px/sec and use dt
+  if (inDungeon && world.boss) {
+    if (world.boss.hitTimer > 0) world.boss.hitTimer -= dt * FPS;
+
+    let bd = Math.hypot(player.x - world.boss.x, player.y - world.boss.y);
+    if (bd < 700) world.boss.active = true;
+
+    if (world.boss.active) { 
+      let bdx = player.x - world.boss.x;
+      let bdy = player.y - world.boss.y;
+      let bDist = Math.hypot(bdx, bdy);
+      
+      if(bDist > 0 && bDist > 75) { 
+          let bossSpeed;
+          if (currentDifficulty === 'impossible') {
+            bossSpeed = Math.max(0.1, PLAYER_SPEED - 1.5);
+          } else {
+            bossSpeed = BOSS_SPEED + (settings.bossSpeedAdd || 0);
+          }
+          const bossSpeedPPS = bossSpeed * FPS;
+          world.boss.x += (bdx / bDist) * bossSpeedPPS * dt; 
+          world.boss.y += (bdy / bDist) * bossSpeedPPS * dt;
+      }
+
+      if (bd < (PLAYER_RAD + 60) && world.boss.atkDelay <= 0) {
+        player.hp -= world.boss.dmg;
+        player.hitTimer = 12; // frame-based
+        world.boss.atkDelay = 45;
+        vibrate(300);
+      }
+    }
+    if (world.boss.atkDelay > 0) world.boss.atkDelay -= dt * FPS;
+    
+    if (player.swing > 0 && bd < (PLAYER_RAD + 75)) {
+       let angleToBoss = Math.atan2(world.boss.y - player.y, world.boss.x - player.x);
+       let diff = angleToBoss - player.dir;
+       while (diff > Math.PI) diff -= Math.PI * 2;
+       while (diff < -Math.PI) diff += Math.PI * 2;
+
+       if (Math.abs(diff) < 1.75) {
+          let rawDmg = Math.max(1, player.swordLvl);
+          let finalDmg = Math.max(1, rawDmg - world.boss.defense);
+          world.boss.hp -= finalDmg;
+          world.boss.hitTimer = 5; 
+          vibrate(50);
+       }
+    }
+    
+    if (world.boss.hp <= 0) {
+      enemiesKilled++; 
+      
+      if (biomeLevel === 10 && beatGameTime === null) {
+          beatGameTime = Date.now() - startTime;
+          showVictoryScreen();
+      } else {
+          biomeLevel++;
+          generateWorld(false);
+      }
+    }
+  }
+
+  if (!inDungeon && Math.hypot(player.x - world.entrance.x, world.entrance.y - player.y) < 40) enterDungeon();
+
+  drops = drops.filter(d => {
+    if (Math.hypot(player.x - d.x, player.y - d.y) < (PLAYER_RAD + 20)) {
+      if (d.type === "hp") {
+         player.hp = Math.min(player.max, player.hp + 1);
+         heartsCollected++;
+      }
+      else if (d.type === "Sword") player.swordLvl++;
+      else if (d.type === "Bow") player.bowLvl++;
+      return false;
+    }
+    return true;
+  });
+
+  if (player.hp <= 0 && gameActive) {
+      showGameOver();
+  }
+}
+
+/* spawnDrop modified: triple probabilities in BEGINNER (easy), keep impossible halving */
+function spawnDrop(x, y) {
+  let pSword = 0.020;
+  let pBow = 0.020;
+  let pHp = 0.160;
+
+  if (currentDifficulty === 'easy') {
+    // CASUAL: 2.5x weapons, 1.875x health
+    pSword *= 2.5;
+    pBow *= 2.5;
+    pHp *= 1.875;
+  }
+
+  if (currentDifficulty === 'moderate') {
+    // MODERATE: 1.5x weapons, 1.25x health
+    pSword *= 1.5;
+    pBow *= 1.5;
+    pHp *= 1.25;
+  }
+
+  if (currentDifficulty === 'impossible') {
+    // IMPOSSIBLE: 0.625x all drops
+    pSword *= 0.625;
+    pBow *= 0.625;
+    pHp *= 0.625;
+  }
+
+  if (currentDifficulty === 'custom') {
+    // CUSTOM: Apply drop rate multiplier based on slider
+    // 0=0.3x, 1=0.65x, 2=1x, 3=1.75x, 4=2.5x
+    const dropMults = [0.3, 0.65, 1.0, 1.75, 2.5];
+    const mult = dropMults[customDropRate];
+    pSword *= mult;
+    pBow *= mult;
+    pHp *= mult;
+  }
+
+  const r = Math.random();
+  if (r < pSword) {
+    drops.push({ x, y, type: "Sword" });
+  } else if (r < pSword + pBow) {
+    drops.push({ x, y, type: "Bow" });
+  } else if (r < pSword + pBow + pHp) {
+    drops.push({ x, y, type: "hp" });
+  }
+}
+
+/* enterDungeon unchanged semantics */
+function enterDungeon() {
+  inDungeon = true;
+  Music.play('dungeon');
+  
+  explored = Array(MAP_SIZE).fill().map(() => Array(MAP_SIZE).fill(false));
+  flowMap = Array(MAP_SIZE).fill().map(() => Array(MAP_SIZE).fill(9999));
+  flowAccSeconds = 0;
+    
+  let wallChance = 0.06;
+
+  for (let y = 0; y < MAP_SIZE; y++) {
+    world.grid[y] = [];
+    for (let x = 0; x < MAP_SIZE; x++) {
+      let isBorder = (x === 0 || y === 0 || x === MAP_SIZE - 1 || y === MAP_SIZE - 1);
+      let isWallTile = isBorder || (Math.random() < wallChance);
+      world.grid[y][x] = isWallTile ? 1 : 0;
+    }
+  }
+    
+  world.enemies = []; shots = []; drops = [];
+  let sp = findSafePos(); player.x = sp.x; player.y = sp.y;
+  let bp = findSafePos();
+    
+  while (Math.hypot(bp.x - player.x, bp.y - player.y) < 600) bp = findSafePos();
+  
+  let settings = DIFFICULTY_SETTINGS[currentDifficulty];
+  const dmgMult = settings.enemyDamageMult || 1;
+  const hpMult = settings.enemyHpMult || 1;
+  
+  let hpS = biomeLevel * settings.bossHpMult * hpMult; 
+  let dmgS = (5 + (biomeLevel * 1.0)) * dmgMult; 
+  let defS = Math.floor(biomeLevel * settings.bossDefMult); 
+  const bossHp = Math.max(1, Math.round(hpS));
+  const bossDmg = Math.max(1, Math.round(dmgS));
+    
+  world.boss = { 
+    x: bp.x, 
+    y: bp.y, 
+    hp: bossHp, 
+    max: bossHp, 
+    dmg: bossDmg, 
+    defense: defS, 
+    atkDelay: 0,
+    hitTimer: 0,
+    active: false 
+  };
+    
+  let scaledDmg = Math.max(1, Math.round((1 + Math.floor((biomeLevel - 1) * 0.25)) * dmgMult));
+  let enemyCount = settings.enemyCountBase + (biomeLevel * settings.enemyCountStep);
+  let enemyHp = Math.max(1, Math.round(hpMult));
+
+  for (let i = 0; i < enemyCount; i++) {
+    // pick a separated spawn point
+    let enp;
+    const minDist = 40;
+    let attempts = 0;
+    do {
+      enp = findSafePos();
+      attempts++;
+      if (Math.hypot(enp.x - player.x, enp.y - player.y) <= 500) continue;
+    } while ((Math.hypot(enp.x - player.x, enp.y - player.y) <= 500 ||
+              world.enemies.some(e => Math.hypot(enp.x - e.x, enp.y - e.y) < minDist))
+             && attempts < 1000);
+
+    if (Math.hypot(enp.x - player.x, enp.y - player.y) > 500) {
+      world.enemies.push({ 
+        x: enp.x, 
+        y: enp.y, 
+        hp: enemyHp, 
+        dmg: scaledDmg, 
+        atkDelay: 0, 
+        hitTimer: 0,
+        color: biomes[(biomeLevel - 1) % biomes.length].enemy
+      });
+    }
+  }
+}
+
+/* === RENDER (draw even when paused so canvas taps can resume) === */
+const ctx = document.getElementById("c").getContext("2d");
+const canvas = document.getElementById("c");
+
+function draw() {
+  // If there is no world yet, clear and return
+  if (!world || !player) {
+    ctx.fillStyle = "#000"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    return;
+  }
+
+  const b = biomes[(biomeLevel - 1) % biomes.length];
+  let cx = player.x - 400, cy = player.y - 300;
+
+  // Choose brighter base colors for the overworld (before entering dungeon)
+  const overworldBrighten = 0.10; // increase lightness for overworld
+  const overworldSaturate = 0.00;
+  const grassColor = !inDungeon ? adjustColor(b.grass || '#000', overworldBrighten, overworldSaturate) : (b.grass || '#000');
+  const wallColor = !inDungeon ? adjustColor(b.wall || '#000', overworldBrighten * 0.6, overworldSaturate) : (b.wall || '#000');
+
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  let startX = Math.max(0, Math.floor(cx / TILE));
+  let endX = Math.min(MAP_SIZE, startX + 27);
+  let startY = Math.max(0, Math.floor(cy / TILE));
+  let endY = Math.min(MAP_SIZE, startY + 20);
+
+  for (let y = startY; y < endY; y++) {
+    for (let x = startX; x < endX; x++) {
+      let drawX = x * TILE - cx;
+      let drawY = y * TILE - cy;
+
+      if (world.grid[y][x] === 1) {
+        ctx.fillStyle = wallColor; 
+        ctx.fillRect(drawX, drawY, TILE, TILE);
+        
+        ctx.fillStyle = "rgba(255,255,255,0.2)";
+        ctx.fillRect(drawX, drawY, TILE, 4);
+        ctx.fillRect(drawX, drawY, 4, TILE);
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.fillRect(drawX + TILE - 4, drawY, 4, TILE);
+        ctx.fillRect(drawX, drawY + TILE - 4, TILE, 4);
+        
+        ctx.strokeStyle = b.wallEdge; 
+        ctx.strokeRect(drawX, drawY, TILE, TILE);
+
+      } else if (!inDungeon) {
+        ctx.fillStyle = grassColor; 
+        ctx.fillRect(drawX, drawY, TILE, TILE);
+        
+        let noise = ((x * 13 + y * 23) % 10) / 10;
+        if (noise > 0.6) {
+           ctx.fillStyle = "rgba(0,0,0,0.1)";
+           ctx.fillRect(drawX + 8, drawY + 8, 4, 4);
+        }
+        if (noise < 0.3) {
+           ctx.fillStyle = "rgba(255,255,255,0.1)";
+           ctx.fillRect(drawX + 20, drawY + 18, 2, 2);
+           ctx.fillRect(drawX + 4, drawY + 22, 2, 2);
+        }
+
+      } else {
+        ctx.fillStyle = "#111"; 
+        ctx.fillRect(drawX, drawY, TILE, TILE);
+        
+        if ((x + y) % 2 === 0) {
+            ctx.fillStyle = "rgba(255,255,255,0.03)";
+            ctx.fillRect(drawX + 2, drawY + 2, TILE - 4, TILE - 4);
+        }
+        if ((x * y) % 11 === 0) {
+             ctx.fillStyle = "#0a0a0a";
+             ctx.fillRect(drawX + 8, drawY + 8, TILE-16, TILE-16);
+        }
+      }
+    }
+  }
+
+  if (!inDungeon) {
+    ctx.fillStyle = "#000"; ctx.beginPath();
+    ctx.arc(world.entrance.x - cx, world.entrance.y - cy, 35, 0, Math.PI*2);
+    ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+ // PLAYER - Animated energy orb with swirling blue energy
+ctx.save();
+ctx.translate(400, 300);
+
+// Outer glow pulse (reduced shadow for iOS)
+const time = Date.now() / 1000;
+const pulseSize = Math.sin(time * 3) * 2 + PLAYER_RAD + 4;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+ctx.shadowBlur = isIOS ? 8 : 18;
+ctx.shadowColor = player.hitTimer > 0 ? "rgba(255,255,255,0.7)" : "rgba(0,200,255,0.5)";
+ctx.fillStyle = player.hitTimer > 0 ? "rgba(255,255,255,0.12)" : "rgba(0,180,255,0.10)";
+ctx.beginPath();
+ctx.arc(0, 0, pulseSize, 0, Math.PI * 2);
+ctx.fill();
+
+// Main orb base with gradient (no shadowBlur for edge)
+const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, PLAYER_RAD);
+if (player.hitTimer > 0) {
+  gradient.addColorStop(0, "rgba(255,255,255,0.95)");
+  gradient.addColorStop(0.5, "rgba(200,220,255,0.9)");
+  gradient.addColorStop(1, "rgba(180,200,255,0.8)");
+} else {
+  gradient.addColorStop(0, "rgba(100,200,255,0.9)");
+  gradient.addColorStop(0.5, "rgba(50,150,255,0.85)");
+  gradient.addColorStop(1, "rgba(20,100,200,0.75)");
+}
+ctx.shadowBlur = 0;
+ctx.fillStyle = gradient;
+ctx.beginPath();
+ctx.arc(0, 0, PLAYER_RAD, 0, Math.PI * 2);
+ctx.fill();
+
+// Swirling energy streams (3 rotating streams)
+for (let i = 0; i < 3; i++) {
+  const rotation = (time * 2 + i * (Math.PI * 2 / 3)) % (Math.PI * 2);
+  ctx.save();
+  ctx.rotate(rotation);
+  
+  // Create swirl path
+  ctx.strokeStyle = player.hitTimer > 0 ? "rgba(255,255,255,0.7)" : "rgba(0,230,255,0.6)";
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = player.hitTimer > 0 ? "rgba(255,255,255,0.9)" : "rgba(0,200,255,0.9)";
+  
+  ctx.beginPath();
+  for (let a = 0; a < Math.PI * 1.5; a += 0.1) {
+    const r = (PLAYER_RAD - 8) * (1 - a / (Math.PI * 1.5));
+    const x = Math.cos(a * 2) * r;
+    const y = Math.sin(a * 2) * r;
+    if (a === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Inner energy particles
+const particleCount = 8;
+for (let i = 0; i < particleCount; i++) {
+  const angle = (time * 1.5 + i * (Math.PI * 2 / particleCount)) % (Math.PI * 2);
+  const radius = 6 + Math.sin(time * 4 + i) * 4;
+  const x = Math.cos(angle) * radius;
+  const y = Math.sin(angle) * radius;
+  
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = player.hitTimer > 0 ? "rgba(255,255,255,1)" : "rgba(100,220,255,1)";
+  ctx.fillStyle = player.hitTimer > 0 ? "rgba(255,255,255,0.95)" : "rgba(150,230,255,0.9)";
+  ctx.beginPath();
+  ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Outer ring — segmented rotating energy arcs
+ctx.shadowBlur = 15;
+ctx.shadowColor = player.hitTimer > 0 ? "rgba(255,255,255,0.9)" : "rgba(0,220,255,0.8)";
+ctx.strokeStyle = player.hitTimer > 0 ? "rgba(255,255,255,0.9)" : "rgba(150,230,255,0.85)";
+ctx.lineWidth = 2;
+const ringSegments = 6;
+const ringGap = 0.18; // gap between segments in radians
+const ringRotation = time * 1.5;
+for (let i = 0; i < ringSegments; i++) {
+  const segStart = ringRotation + i * (Math.PI * 2 / ringSegments) + ringGap / 2;
+  const segEnd = segStart + (Math.PI * 2 / ringSegments) - ringGap;
+  const segAlpha = 0.55 + 0.35 * Math.sin(time * 3 + i * 1.2);
+  ctx.globalAlpha = segAlpha;
+  ctx.beginPath();
+  ctx.arc(0, 0, PLAYER_RAD, segStart, segEnd);
+  ctx.stroke();
+}
+ctx.globalAlpha = 1.0;
+
+ctx.restore();
+
+  if (player.swing > 0) {
+    ctx.save();
+    // Calculate swing progress for animation (5 to 0)
+    const swingProgress = player.swing / 5;
+    const swingAngle = swingProgress * 2.8; // Wider arc that narrows as it progresses
+    
+    // Get weapon glow color for this biome
+    const glowColor = b.wpnGlow || "#00e6ff";
+    const glowRGB = glowColor === "#00e6ff" ? "0,230,255" : "0,180,255";
+    
+    // Draw outer glow/outline for visibility
+    ctx.shadowBlur = 35;
+    ctx.shadowColor = glowColor;
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth = 24;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.4 * swingProgress;
+    ctx.beginPath();
+    ctx.arc(400, 300, PLAYER_RAD + 25, 
+            player.dir - swingAngle, 
+            player.dir + swingAngle);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+    
+    // Draw multiple trailing arcs for swoosh effect
+    for (let i = 0; i < 3; i++) {
+      const offset = i * 0.3;
+      const alpha = (0.6 - i * 0.15) * swingProgress;
+      const blur = 20 + i * 5;
+      
+      ctx.shadowBlur = blur;
+      ctx.shadowColor = `rgba(${glowRGB},${alpha})`;
+      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+      ctx.lineWidth = 18 - i * 4;
+      ctx.lineCap = 'round';
+      
+      ctx.beginPath();
+      ctx.arc(400, 300, PLAYER_RAD + 25 + i * 5, 
+              player.dir - swingAngle + offset, 
+              player.dir + swingAngle - offset);
+      ctx.stroke();
+    }
+    
+    // Add sharp edge effect at the tip
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = "rgba(255,255,255,0.9)";
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    
+    const tipRadius = PLAYER_RAD + 30;
+    const tipStart = player.dir + swingAngle * 0.8;
+    const tipEnd = player.dir + swingAngle;
+    
+    ctx.beginPath();
+    ctx.arc(400, 300, tipRadius, tipStart, tipEnd);
+    ctx.stroke();
+    
+    ctx.restore();
+  }
+
+  // --- DYNAMIC ENEMY RENDERING ---
+  const eTime = Date.now() / 1000;
+  const eColor = hexToRgb(b.enemy);
+  world.enemies.forEach((e, ei) => {
+    const ex = e.x - cx, ey = e.y - cy;
+    const ERAD = 14;
+    ctx.save();
+    ctx.translate(ex, ey);
+
+    if (e.hitTimer > 0) {
+      // Hit flash — bright white burst
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = "rgba(255,255,255,0.95)";
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(0, 0, ERAD + 2, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Outer glow pulse (slower & subtler than player)
+      const ePulse = Math.sin(eTime * 2 + ei * 1.7) * 1.5 + ERAD + 3;
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.6)`;
+      ctx.fillStyle = `rgba(${eColor.r},${eColor.g},${eColor.b},0.12)`;
+      ctx.beginPath(); ctx.arc(0, 0, ePulse, 0, Math.PI * 2); ctx.fill();
+
+      // Radial gradient body
+      const eGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, ERAD);
+      eGrad.addColorStop(0, `rgba(${Math.min(eColor.r+80,255)},${Math.min(eColor.g+80,255)},${Math.min(eColor.b+80,255)},0.95)`);
+      eGrad.addColorStop(0.55, `rgba(${eColor.r},${eColor.g},${eColor.b},0.9)`);
+      eGrad.addColorStop(1, `rgba(${Math.max(eColor.r-40,0)},${Math.max(eColor.g-40,0)},${Math.max(eColor.b-40,0)},0.8)`);
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.7)`;
+      ctx.fillStyle = eGrad;
+      ctx.beginPath(); ctx.arc(0, 0, ERAD, 0, Math.PI * 2); ctx.fill();
+
+      // 2 swirling energy arcs (less than player's 3, different spiral)
+      for (let i = 0; i < 2; i++) {
+        const rot = (eTime * 1.6 + ei * 2.3 + i * Math.PI) % (Math.PI * 2);
+        ctx.save();
+        ctx.rotate(rot);
+        ctx.strokeStyle = `rgba(${Math.min(eColor.r+60,255)},${Math.min(eColor.g+60,255)},${Math.min(eColor.b+60,255)},0.5)`;
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.7)`;
+        ctx.beginPath();
+        for (let a = 0; a < Math.PI; a += 0.15) {
+          const r = (ERAD - 4) * (1 - a / Math.PI);
+          const x = Math.cos(a * 2.5) * r;
+          const y = Math.sin(a * 2.5) * r;
+          if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 4 inner particles
+      for (let i = 0; i < 4; i++) {
+        const pAngle = (eTime * 1.2 + ei * 0.8 + i * (Math.PI * 2 / 4)) % (Math.PI * 2);
+        const pR = 4 + Math.sin(eTime * 3 + i * 1.5) * 2.5;
+        const px = Math.cos(pAngle) * pR;
+        const py = Math.sin(pAngle) * pR;
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.9)`;
+        ctx.fillStyle = `rgba(${Math.min(eColor.r+100,255)},${Math.min(eColor.g+100,255)},${Math.min(eColor.b+100,255)},0.85)`;
+        ctx.beginPath(); ctx.arc(px, py, 1.2, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Outer ring
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.6)`;
+      ctx.strokeStyle = `rgba(${eColor.r},${eColor.g},${eColor.b},0.7)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, ERAD, 0, Math.PI * 2); ctx.stroke();
+
+      // Glowing "eyes" — two small bright dots
+      for (let side = -1; side <= 1; side += 2) {
+        ctx.shadowBlur = 5;
+        ctx.shadowColor = `rgba(${Math.min(eColor.r+120,255)},${Math.min(eColor.g+120,255)},${Math.min(eColor.b+120,255)},1)`;
+        ctx.fillStyle = `rgba(${Math.min(eColor.r+140,255)},${Math.min(eColor.g+140,255)},${Math.min(eColor.b+140,255)},0.95)`;
+        ctx.beginPath(); ctx.arc(side * 3.5, -3, 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+  });
+
+  // --- DYNAMIC BOSS RENDERING ---
+  if (inDungeon && world.boss) {
+    const bx = world.boss.x - cx, by = world.boss.y - cy;
+    const BRAD = 50;
+    const bossColor = hexToRgb(b.enemy);
+    ctx.save();
+    ctx.translate(bx, by);
+
+    if (world.boss.hitTimer > 0) {
+      ctx.shadowBlur = 40;
+      ctx.shadowColor = "rgba(255,255,255,0.95)";
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(0, 0, BRAD + 4, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Outer glow pulse
+      const bPulse = Math.sin(eTime * 2.5) * 4 + BRAD + 6;
+      ctx.shadowBlur = 28;
+      ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.7)`;
+      ctx.fillStyle = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.1)`;
+      ctx.beginPath(); ctx.arc(0, 0, bPulse, 0, Math.PI * 2); ctx.fill();
+
+      // Radial gradient body
+      const bGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, BRAD);
+      bGrad.addColorStop(0, `rgba(${Math.min(bossColor.r+60,255)},${Math.min(bossColor.g+60,255)},${Math.min(bossColor.b+60,255)},0.95)`);
+      bGrad.addColorStop(0.5, `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.9)`);
+      bGrad.addColorStop(1, `rgba(${Math.max(bossColor.r-50,0)},${Math.max(bossColor.g-50,0)},${Math.max(bossColor.b-50,0)},0.8)`);
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.8)`;
+      ctx.fillStyle = bGrad;
+      ctx.beginPath(); ctx.arc(0, 0, BRAD, 0, Math.PI * 2); ctx.fill();
+
+      // 4 swirling energy arcs (more than enemies, bigger spirals)
+      for (let i = 0; i < 4; i++) {
+        const rot = (eTime * 1.2 + i * (Math.PI / 2)) % (Math.PI * 2);
+        ctx.save();
+        ctx.rotate(rot);
+        ctx.strokeStyle = `rgba(${Math.min(bossColor.r+80,255)},${Math.min(bossColor.g+80,255)},${Math.min(bossColor.b+80,255)},0.45)`;
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.8)`;
+        ctx.beginPath();
+        for (let a = 0; a < Math.PI * 1.3; a += 0.12) {
+          const r = (BRAD - 12) * (1 - a / (Math.PI * 1.3));
+          const x = Math.cos(a * 2) * r;
+          const y = Math.sin(a * 2) * r;
+          if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.8)`;
+        ctx.beginPath();
+        for (let a = 0; a < Math.PI * 1.3; a += 0.12) {
+          const r = (BRAD - 12) * (1 - a / (Math.PI * 1.3));
+          const x = Math.cos(a * 2) * r;
+          const y = Math.sin(a * 2) * r;
+          if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 6 inner particles
+      for (let i = 0; i < 6; i++) {
+        const pAngle = (eTime * 1.0 + i * (Math.PI * 2 / 6)) % (Math.PI * 2);
+        const pR = 14 + Math.sin(eTime * 2.5 + i * 1.2) * 10;
+        const px = Math.cos(pAngle) * pR;
+        const py = Math.sin(pAngle) * pR;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},1)`;
+        ctx.fillStyle = `rgba(${Math.min(bossColor.r+100,255)},${Math.min(bossColor.g+100,255)},${Math.min(bossColor.b+100,255)},0.9)`;
+        ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Outer ring with glow
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.8)`;
+      ctx.strokeStyle = `rgba(${Math.min(bossColor.r+40,255)},${Math.min(bossColor.g+40,255)},${Math.min(bossColor.b+40,255)},0.85)`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, BRAD, 0, Math.PI * 2); ctx.stroke();
+
+      // 3 spark highlights orbiting near the edge
+      for (let i = 0; i < 3; i++) {
+        const sAngle = (eTime * 3.5 + i * (Math.PI * 2 / 3)) % (Math.PI * 2);
+        const sx = Math.cos(sAngle) * (BRAD - 4);
+        const sy = Math.sin(sAngle) * (BRAD - 4);
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = `rgba(${Math.min(bossColor.r+120,255)},${Math.min(bossColor.g+120,255)},${Math.min(bossColor.b+120,255)},1)`;
+        ctx.fillStyle = `rgba(${Math.min(bossColor.r+140,255)},${Math.min(bossColor.g+140,255)},${Math.min(bossColor.b+140,255)},0.95)`;
+        ctx.beginPath(); ctx.arc(sx, sy, 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // Boss HP bar
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(bx - 52, by - 82, 104, 14);
+    ctx.fillStyle = "#333"; ctx.fillRect(bx - 50, by - 80, 100, 10);
+    ctx.fillStyle = "#ff0000"; ctx.fillRect(bx - 50, by - 80, (world.boss.hp / world.boss.max) * 100, 10);
+  }
+
+  // DRAW SHOTS (positions updated in update(dt))
+  shots.forEach(s => {
+    // Use biome-specific weapon colors
+    const trailColor = b.wpnTrail || "#f1c40f";
+    const shaftColor = b.wpnShaft || "#bdc3c7";
+    const headColor = b.wpnHead || "#dfeef6";
+    const glowColor = b.wpnGlow || "#00e6ff";
+    
+    let ang = Math.atan2(s.dy, s.dx);
+    ctx.save();
+    ctx.translate(s.x - cx, s.y - cy);
+    ctx.rotate(ang);
+
+    // Draw glow outline first for visibility
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = glowColor;
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-18, 0);
+    ctx.lineTo(18, 0);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+
+    // Draw trail
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = trailColor;
+    ctx.strokeStyle = trailColor;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-12, 0);
+    ctx.stroke();
+
+    // Draw shaft with outline
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(-19, -2, 28, 4);
+    ctx.fillStyle = shaftColor;
+    ctx.fillRect(-18, -1.5, 28, 3);
+
+    // Diamond arrowhead with glow and outline
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = glowColor;
+    
+    // Dark outline
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(15, -6);
+    ctx.lineTo(19, 0);
+    ctx.lineTo(15, 6);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Main diamond head
+    ctx.fillStyle = headColor;
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(14, -5);
+    ctx.lineTo(18, 0);
+    ctx.lineTo(14, 5);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Bright outline
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Highlight dot
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#ffffff";
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.beginPath();
+    ctx.arc(14, 0, 1.5, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+  });
+
+  // DROPS (unchanged visuals)
+  drops.forEach(d => {
+    let dx = d.x - cx, dy = d.y - cy;
+    if (d.type === "hp") {
+      // replicate player orb appearance exactly (blue gradient, pulse, hit flash)
+      const time = Date.now() / 1000;
+      const baseRadius = 10;
+      const pulseSize = Math.sin(time * 3) * 2 + baseRadius;
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+      ctx.save();
+      ctx.translate(dx, dy);
+
+      // outer glow/pulse matching player
+      ctx.shadowBlur = isIOS ? 8 : 18;
+      ctx.shadowColor = player.hitTimer > 0 ? "rgba(255,255,255,0.7)" : "rgba(0,200,255,0.5)";
+      ctx.fillStyle = player.hitTimer > 0 ? "rgba(255,255,255,0.12)" : "rgba(0,180,255,0.10)";
+      ctx.beginPath(); ctx.arc(0, 0, pulseSize, 0, Math.PI * 2); ctx.fill();
+
+      // main orb gradient identical to player
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, baseRadius);
+      if (player.hitTimer > 0) {
+        gradient.addColorStop(0, "rgba(255,255,255,0.95)");
+        gradient.addColorStop(0.5, "rgba(200,220,255,0.9)");
+        gradient.addColorStop(1, "rgba(180,200,255,0.8)");
+      } else {
+        gradient.addColorStop(0, "rgba(100,200,255,0.9)");
+        gradient.addColorStop(0.5, "rgba(50,150,255,0.85)");
+        gradient.addColorStop(1, "rgba(20,100,200,0.75)");
+      }
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = gradient;
+      ctx.beginPath(); ctx.arc(0, 0, baseRadius, 0, Math.PI * 2); ctx.fill();
+
+      // tiny brightness pulse overlay
+      const brightAlpha = 0.05 * (Math.sin(time * 6) + 1); // 0 to 0.1
+      ctx.fillStyle = `rgba(255,255,255,${brightAlpha})`;
+      ctx.beginPath(); ctx.arc(0, 0, baseRadius, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+    } else if (d.type === "Sword") {
+      ctx.save();
+      ctx.shadowBlur = 20; ctx.shadowColor = "rgba(0,180,255,0.75)";
+      ctx.translate(dx, dy);
+      ctx.rotate(Math.PI / 4);
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.lineJoin = "round";
+      ctx.beginPath(); 
+      ctx.moveTo(-3, -15); ctx.lineTo(3, -15); ctx.lineTo(0, -22); ctx.lineTo(-3, -15);
+      ctx.rect(-3, -15, 6, 24);
+      ctx.stroke();
+      ctx.fillStyle = "#dfeef6"; ctx.fillRect(-3, -15, 6, 24); 
+      ctx.beginPath(); ctx.moveTo(-3, -15); ctx.lineTo(3, -15); ctx.lineTo(0, -22); ctx.fill();
+      ctx.fillStyle = "#f39c12"; ctx.fillRect(-8, 5, 16, 4);
+      ctx.fillStyle = "#8e44ad"; ctx.fillRect(-2, 9, 4, 8);
+      ctx.restore();
+
+    } else if (d.type === "Bow") {
+      ctx.save();
+      ctx.translate(dx, dy);
+      ctx.rotate(-Math.PI / 4);
+
+      // Draw metallic bow limbs with chrome/silver gradient effect
+      ctx.shadowBlur = 25; ctx.shadowColor = "rgba(180,200,220,0.9)";
+      ctx.strokeStyle = "#c0d0e0"; // Bright metallic silver
+      ctx.lineWidth = 5; ctx.lineCap = "round"; 
+      ctx.beginPath();
+      ctx.moveTo(0, -5); 
+      ctx.quadraticCurveTo(-15, -10, -10, -20);
+      ctx.moveTo(0, 5);
+      ctx.quadraticCurveTo(-15, 10, -10, 20);
+      ctx.stroke();
+      
+      // Add highlight edges for metallic sheen
+      ctx.shadowBlur = 15; ctx.shadowColor = "rgba(255,255,255,0.8)";
+      ctx.strokeStyle = "#e8f0f8"; // Very bright highlight
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -5);
+      ctx.quadraticCurveTo(-14, -9, -9, -19);
+      ctx.moveTo(0, 5);
+      ctx.quadraticCurveTo(-14, 9, -9, 19);
+      ctx.stroke();
+
+      // Draw bow string with glow
+      ctx.beginPath();
+      ctx.shadowBlur = 20; ctx.shadowColor = "rgba(0,180,255,0.75)";
+      ctx.strokeStyle = "#00b4ff"; ctx.lineWidth = 3;
+      ctx.moveTo(0, -5); ctx.lineTo(0, 5); ctx.stroke();
+
+      // Draw metallic grip over string
+      ctx.shadowBlur = 10; ctx.shadowColor = "rgba(150,150,150,0.6)";
+      ctx.strokeStyle = "#909090"; // Dark metallic gray
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, 5); ctx.stroke();
+      
+      // Add grip highlight
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "#b8b8b8"; // Lighter metallic highlight
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-1, -5); ctx.lineTo(-1, 5); ctx.stroke();
+
+      ctx.restore();
+    }
+  });
+
+  // STATS BOX + MINIMAP (unchanged)
+  const boxX = 20;
+  const boxY = 10;
+  const boxW = TILE * 11; // 11 tiles wide
+  const boxH = 110;
+
+  ctx.fillStyle = "rgba(0,0,0,0.48)"; // slightly more translucent
+  ctx.fillRect(boxX, boxY, boxW, boxH);
+  ctx.strokeStyle = "rgba(255,255,255,0.6)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+  ctx.fillStyle = "rgba(255,255,255,0.9)"; // slightly translucent text
+  // Left: HP then ENEMIES to its right. Reserve width for MAX_HP to avoid overlap
+  ctx.textAlign = "left";
+  ctx.font = "bold 14px monospace"; // unified HUD font (increased to 14px)
+  const hpText = "HP: " + Math.ceil(player.hp);
+  // Reserve width using the MAX_HP constant so future large HP values won't overlap the ENEMIES label
+  const hpReserveText = "HP: " + MAX_HP;
+  const hpReserveWidth = ctx.measureText(hpReserveText).width;
+  ctx.fillText(hpText, boxX + 12, boxY + 36);
+
+  // Place ENEMIES just to the right of the reserved HP width with some padding
+  // Shift slightly left by two spaces to reduce chance of overlap with TIME
+  const spaceWidth = ctx.measureText(" ").width;
+  const enemiesX = boxX + 12 + hpReserveWidth + 18 - (2 * spaceWidth); // two-space left shift
+  ctx.fillText("ENEMIES: " + enemiesKilled, enemiesX, boxY + 36);
+
+  // Right area: TIME at far right (unchanged)
+  const timeX = boxX + boxW - 12;
+
+  // Left column stats (Sword / Bow)
+  ctx.textAlign = "left";
+  ctx.font = "bold 14px monospace"; // unified HUD font (increased to 14px)
+  ctx.fillText("SWORD DMG: " + player.swordLvl, boxX + 12, boxY + 62);
+  ctx.fillText("BOW DMG: " + player.bowLvl, boxX + 12, boxY + 88);
+
+  ctx.textAlign = "right";
+  ctx.font = "bold 14px monospace"; // match HUD font/size (increased to 14px)
+  // Show elapsed time, but freeze during pause
+  const displayTime = pauseTimestamp > 0 ? (pauseTimestamp - startTime) : (Date.now() - startTime);
+  ctx.fillText("TIME: " + formatTime(displayTime), boxX + boxW - 12, boxY + 36);
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillText("DIFFICULTY: " + (DIFFICULTY_SETTINGS[currentDifficulty]?.name || currentDifficulty).toUpperCase(), boxX + boxW - 12, boxY + 62);
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillText(("BIOME " + biomeLevel + ": " + b.name).toUpperCase(), boxX + boxW - 6, boxY + 92);
+  ctx.globalAlpha = 1.0;
+
+  const mmS = 1.0;
+  const mmX = 650;
+  const mmY = 15;
+  const mmW = MAP_SIZE * mmS;
+  const mmH = MAP_SIZE * mmS;
+
+  // Make minimap stand out when paused
+  const isPaused = !gameActive && gameRunning;
+  ctx.globalAlpha = isPaused ? 1.0 : 0.8; 
+  ctx.fillStyle = "#000";
+  ctx.fillRect(mmX, mmY, mmW, mmH);
+  
+  // Brighter, glowing outline when paused
+  if (isPaused) {
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "rgba(255,255,255,0.6)";
+    ctx.strokeStyle = "rgba(200,200,200,0.9)";
+    ctx.lineWidth = 3;
+  } else {
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(128,128,128,0.5)";
+    ctx.lineWidth = 2;
+  }
+  ctx.strokeRect(mmX, mmY, mmW, mmH);
+  ctx.shadowBlur = 0;
+  
+  for (let y = 0; y < MAP_SIZE; y++) {
+    for (let x = 0; x < MAP_SIZE; x++) {
+      if (explored[y][x]) {
+        if (world.grid[y][x] === 1) {
+          ctx.fillStyle = b.wall;
+        } else {
+          // Brighten explored floor tiles more for improved visibility on the minimap
+          ctx.fillStyle = adjustColor(b.grass || '#2a2a2a', 0.30, 0.12);
+        }
+        ctx.fillRect(mmX + x * mmS, mmY + y * mmS, mmS, mmS);
+      }
+    }
+  }
+
+  if (!inDungeon) {
+    let ex = Math.floor(world.entrance.x / TILE);
+    let ey = Math.floor(world.entrance.y / TILE);
+    if (explored[ey] && explored[ey][ex]) {
+        ctx.fillStyle = b.enemy;
+        ctx.beginPath();
+        ctx.arc(mmX + ex * mmS, mmY + ey * mmS, 3, 0, Math.PI*2);
+        ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = "#00ffff"; ctx.beginPath();
+  ctx.arc(mmX + (player.x / TILE) * mmS, mmY + (player.y / TILE) * mmS, 2.5, 0, Math.PI*2);
+  ctx.fill(); ctx.globalAlpha = 1.0;
+}
+
+/* === MAIN LOOP: compute dt and pass to update === */
+let lastTime = performance.now();
+(function loop(now) {
+  const dt = Math.min(0.1, (now - lastTime) / 1000); // clamp to avoid huge jumps (max 100ms)
+  lastTime = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+})(lastTime);
+
+/* === Visibility / Focus handling: pause when app/backgrounded === */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Pause when backgrounded and show overlay
+    if (gameActive && gameRunning && !gameOver) {
+      pauseGame(true);
+    }
+  } else {
+    // When returning to visible, keep the overlay shown if game is paused
+    // User will tap anywhere to resume
+  }
+});
+window.addEventListener('blur', () => {
+  // Pause when window loses focus
+  if (gameActive && gameRunning && !gameOver) {
+    pauseGame(true); // Show overlay so user knows to tap anywhere when returning
+  }
+});
+window.addEventListener('focus', () => {
+  // When focus returns, keep overlay shown if game is paused
+  // User will tap anywhere to resume
+});
+
+/* Canvas click/touch: pause on minimap, resume anywhere */
+canvas.addEventListener('click', (e) => {
+  handleCanvasTap(e);
+});
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  handleCanvasTap(e);
+}, {passive: false});
+
+/* ===== Revive Player (Ad Reward) ===== */
+window.revivePlayer = function () {
+  // Prevent reviving if the player exhausted all allowed revives
+  if (typeof continuesUsed !== 'undefined' && continuesUsed >= MAX_REVIVES) {
+    // Show compact ad-unavailable message instead of error
+    var btn = document.getElementById('revive-ad-btn');
+    if (btn) {
+      btn.classList.add('disabled');
+      btn.innerHTML = `<span class="video-icon">\u25B6</span> NO REVIVES LEFT`;
+      btn.title = 'NO REVIVES LEFT';
+    }
+    return;
+  }
+
+  continuesUsed++;
+  player.hp  = 50;
+  gameOver   = false;
+  gameRunning = true;
+  // No cooldown: allow immediate consecutive revives (AdMob will enforce limits)
+
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('game-over-btns').classList.add('hidden');
+  console.log('Player Revived! Revives used: ' + continuesUsed);
+
+  // Pause the game (without showing the pause overlay) so time does not advance while the player reads the message.
+  gameActive = true;
+  if (typeof pauseGame === 'function') pauseGame(false);
+
+  // Show the revive reminder screen before returning to the pause screen.
+  showReviveInfoOverlay();
+};
+
+/* Request the Android wrapper to show a rewarded ad */
+function requestReviveAd() {
+  // Disallow if max revives reached
+  if (typeof continuesUsed !== 'undefined' && continuesUsed >= MAX_REVIVES) {
+    updateReviveButtonState();
+    return;
+  }
+
+  if (!isReviveAvailable()) {
+    updateReviveButtonState();
+    return;
+  }
+
+  var btn = document.getElementById('revive-ad-btn');
+  if (btn) {
+    btn.classList.add('disabled');
+    btn.textContent = 'LOADING AD...';
+  }
+  if (window.Android && window.Android.onGameOver) {
+    // Trigger the Android rewarded ad. Cooldown will be recorded when
+    // the ad completes and `revivePlayer()` is called.
+    window.Android.onGameOver();
+  } else {
+    console.warn('Android ad interface not available');
+    if (btn) {
+      btn.classList.remove('disabled');
+      btn.innerHTML = `<span class="video-icon">\u25B6</span> Ad not ready`;
+      btn.title = 'Ad not ready';
+    }
+  }
+}
+
+/* Reset revive button state each time game over screen shows */
+var _originalShowGameOver = showGameOver;
+showGameOver = function () {
+  _originalShowGameOver.apply(this, arguments);
+  // Ensure the revive button reflects the current cooldown state
+  updateReviveButtonState();
+};
+</script>
+</body>
+</html>
