@@ -3233,90 +3233,89 @@ function draw() {
 
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Apply a subtle top-down "tilt" so the scene feels slightly 3D from the player's perspective.
-  // This is an affine transform (skew + vertical scale) applied around the canvas center.
-  // It keeps HUD elements untransformed because we restore the context before drawing them.
-  const TILT = 0.28;    // how much horizontal->vertical skew (0 = flat top-down)
-  const SCALE_Y = 0.82; // compress vertical axis slightly to simulate foreshortening
-  ctx.save();
-  ctx.translate(400, 300);
-  ctx.transform(1, -TILT, 0, SCALE_Y, 0, 0);
-  ctx.translate(-400, -300);
+  // Use an isometric-ish projection from a corner (45deg rotation) so the view
+  // feels like looking from a room corner. We convert world pixel coordinates
+  // into screen positions per-object instead of transforming the whole canvas.
+  function worldToIso(wx, wy) {
+    const tx = wx / TILE, ty = wy / TILE;
+    const isoX = (tx - ty) * (TILE / 2);
+    const isoY = (tx + ty) * (TILE / 4);
+    const pTx = player.x / TILE, pTy = player.y / TILE;
+    const pIsoX = (pTx - pTy) * (TILE / 2);
+    const pIsoY = (pTx + pTy) * (TILE / 4);
+    return { x: 400 + isoX - pIsoX, y: 300 + isoY - pIsoY };
+  }
 
   let startX = Math.max(0, Math.floor(cx / TILE));
   let endX = Math.min(MAP_SIZE, startX + 27);
   let startY = Math.max(0, Math.floor(cy / TILE));
   let endY = Math.min(MAP_SIZE, startY + 20);
 
+  // Collect visible tiles then draw them in correct depth order (by x+y)
+  const tiles = [];
   for (let y = startY; y < endY; y++) {
     for (let x = startX; x < endX; x++) {
-      let drawX = x * TILE - cx;
-      let drawY = y * TILE - cy;
+      tiles.push({ x, y, t: world.grid[y][x] });
+    }
+  }
+  tiles.sort((a, c) => (a.x + a.y) - (c.x + c.y));
 
-      if (world.grid[y][x] === 1) {
-        ctx.fillStyle = wallColor; 
-        ctx.fillRect(drawX, drawY, TILE, TILE);
-        
-        ctx.fillStyle = "rgba(255,255,255,0.2)";
-        ctx.fillRect(drawX, drawY, TILE, 4);
-        ctx.fillRect(drawX, drawY, 4, TILE);
-        ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.fillRect(drawX + TILE - 4, drawY, 4, TILE);
-        ctx.fillRect(drawX, drawY + TILE - 4, TILE, 4);
-        
-        ctx.strokeStyle = b.wallEdge; 
-        ctx.strokeRect(drawX, drawY, TILE, TILE);
+  const halfW = TILE / 2, halfH = TILE / 4;
+  for (let tile of tiles) {
+    const x = tile.x, y = tile.y;
+    const center = worldToIso((x + 0.5) * TILE, (y + 0.5) * TILE);
+    const drawX = center.x, drawY = center.y;
 
-      } else if (!inDungeon) {
-        ctx.fillStyle = grassColor; 
-        ctx.fillRect(drawX, drawY, TILE, TILE);
-        
-        let noise = ((x * 13 + y * 23) % 10) / 10;
-        if (noise > 0.6) {
-           ctx.fillStyle = "rgba(0,0,0,0.1)";
-           ctx.fillRect(drawX + 8, drawY + 8, 4, 4);
-        }
-        if (noise < 0.3) {
-           ctx.fillStyle = "rgba(255,255,255,0.1)";
-           ctx.fillRect(drawX + 20, drawY + 18, 2, 2);
-           ctx.fillRect(drawX + 4, drawY + 22, 2, 2);
-        }
+    // diamond corners
+    const p1 = { x: drawX, y: drawY - halfH };
+    const p2 = { x: drawX + halfW, y: drawY };
+    const p3 = { x: drawX, y: drawY + halfH };
+    const p4 = { x: drawX - halfW, y: drawY };
 
-      } else {
-        ctx.fillStyle = "#111"; 
-        ctx.fillRect(drawX, drawY, TILE, TILE);
-        
-        if ((x + y) % 2 === 0) {
-            ctx.fillStyle = "rgba(255,255,255,0.03)";
-            ctx.fillRect(drawX + 2, drawY + 2, TILE - 4, TILE - 4);
-        }
-        if ((x * y) % 11 === 0) {
-             ctx.fillStyle = "#0a0a0a";
-             ctx.fillRect(drawX + 8, drawY + 8, TILE-16, TILE-16);
-        }
+    if (tile.t === 1) {
+      // wall tile as darker diamond with edge highlights
+      ctx.fillStyle = wallColor;
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = b.wallEdge; ctx.lineWidth = 1; ctx.stroke();
+    } else if (!inDungeon) {
+      ctx.fillStyle = grassColor;
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+      let noise = ((x * 13 + y * 23) % 10) / 10;
+      if (noise > 0.6) {
+        ctx.fillStyle = "rgba(0,0,0,0.08)";
+        ctx.fillRect(drawX - halfW + 8, drawY - halfH + 8, 4, 4);
+      }
+    } else {
+      ctx.fillStyle = "#111";
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
+      if ((x + y) % 2 === 0) {
+        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
       }
     }
   }
 
   if (!inDungeon) {
+    const ent = worldToIso(world.entrance.x, world.entrance.y);
     ctx.fillStyle = "#000"; ctx.beginPath();
-    ctx.arc(world.entrance.x - cx, world.entrance.y - cy, 35, 0, Math.PI*2);
+    ctx.arc(ent.x, ent.y, 18, 0, Math.PI*2);
     ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
   }
 
- // PLAYER - Animated energy orb with swirling blue energy
-ctx.save();
-ctx.translate(400, 300);
+ // PLAYER - Animated energy orb with swirling blue energy (drawn as 3D-looking sphere)
+const pScreen = worldToIso(player.x, player.y);
 
 // Outer glow pulse (reduced shadow for iOS)
 const time = Date.now() / 1000;
 const pulseSize = Math.sin(time * 3) * 2 + PLAYER_RAD + 4;
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+ctx.save();
+ctx.translate(pScreen.x, pScreen.y - 6); // slight vertical offset to suggest elevation
 ctx.shadowBlur = isIOS ? 8 : 18;
 ctx.shadowColor = player.hitTimer > 0 ? "rgba(255,255,255,0.7)" : "rgba(0,200,255,0.5)";
 ctx.fillStyle = player.hitTimer > 0 ? "rgba(255,255,255,0.12)" : "rgba(0,180,255,0.10)";
 ctx.beginPath();
-ctx.arc(0, 0, pulseSize, 0, Math.PI * 2);
+ctx.ellipse(0, 0, pulseSize * 1.15, pulseSize * 0.7, 0, 0, Math.PI * 2);
 ctx.fill();
 
 // Main orb base with gradient (no shadowBlur for edge)
@@ -3403,11 +3402,12 @@ ctx.restore();
     // Calculate swing progress for animation (5 to 0)
     const swingProgress = player.swing / 5;
     const swingAngle = swingProgress * 2.8; // Wider arc that narrows as it progresses
-    
+    const centerX = pScreen.x, centerY = pScreen.y - 6;
+
     // Get weapon glow color for this biome
     const glowColor = b.wpnGlow || "#00e6ff";
     const glowRGB = glowColor === "#00e6ff" ? "0,230,255" : "0,180,255";
-    
+
     // Draw outer glow/outline for visibility
     ctx.shadowBlur = 35;
     ctx.shadowColor = glowColor;
@@ -3416,46 +3416,46 @@ ctx.restore();
     ctx.lineCap = 'round';
     ctx.globalAlpha = 0.4 * swingProgress;
     ctx.beginPath();
-    ctx.arc(400, 300, PLAYER_RAD + 25, 
-            player.dir - swingAngle, 
+    ctx.arc(centerX, centerY, PLAYER_RAD + 25,
+            player.dir - swingAngle,
             player.dir + swingAngle);
     ctx.stroke();
     ctx.globalAlpha = 1.0;
-    
+
     // Draw multiple trailing arcs for swoosh effect
     for (let i = 0; i < 3; i++) {
       const offset = i * 0.3;
       const alpha = (0.6 - i * 0.15) * swingProgress;
       const blur = 20 + i * 5;
-      
+
       ctx.shadowBlur = blur;
       ctx.shadowColor = `rgba(${glowRGB},${alpha})`;
       ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
       ctx.lineWidth = 18 - i * 4;
       ctx.lineCap = 'round';
-      
+
       ctx.beginPath();
-      ctx.arc(400, 300, PLAYER_RAD + 25 + i * 5, 
-              player.dir - swingAngle + offset, 
+      ctx.arc(centerX, centerY, PLAYER_RAD + 25 + i * 5,
+              player.dir - swingAngle + offset,
               player.dir + swingAngle - offset);
       ctx.stroke();
     }
-    
+
     // Add sharp edge effect at the tip
     ctx.shadowBlur = 30;
     ctx.shadowColor = "rgba(255,255,255,0.9)";
     ctx.strokeStyle = "rgba(255,255,255,0.95)";
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
-    
+
     const tipRadius = PLAYER_RAD + 30;
     const tipStart = player.dir + swingAngle * 0.8;
     const tipEnd = player.dir + swingAngle;
-    
+
     ctx.beginPath();
-    ctx.arc(400, 300, tipRadius, tipStart, tipEnd);
+    ctx.arc(centerX, centerY, tipRadius, tipStart, tipEnd);
     ctx.stroke();
-    
+
     ctx.restore();
   }
 
@@ -3463,10 +3463,10 @@ ctx.restore();
   const eTime = Date.now() / 1000;
   const eColor = hexToRgb(b.enemy);
   world.enemies.forEach((e, ei) => {
-    const ex = e.x - cx, ey = e.y - cy;
+    const screen = worldToIso(e.x, e.y);
     const ERAD = 14;
     ctx.save();
-    ctx.translate(ex, ey);
+    ctx.translate(screen.x, screen.y - 4);
 
     if (e.hitTimer > 0) {
       // Hit flash — bright white burst
@@ -3480,19 +3480,19 @@ ctx.restore();
       ctx.shadowBlur = 14;
       ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.6)`;
       ctx.fillStyle = `rgba(${eColor.r},${eColor.g},${eColor.b},0.12)`;
-      ctx.beginPath(); ctx.arc(0, 0, ePulse, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, ePulse * 1.1, ePulse * 0.7, 0, 0, Math.PI * 2); ctx.fill();
 
-      // Radial gradient body
-      const eGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, ERAD);
+      // Radial gradient body to look like a 3D sphere
+      const eGrad = ctx.createRadialGradient(-ERAD*0.3, -ERAD*0.5, 0, 0, 0, ERAD);
       eGrad.addColorStop(0, `rgba(${Math.min(eColor.r+80,255)},${Math.min(eColor.g+80,255)},${Math.min(eColor.b+80,255)},0.95)`);
       eGrad.addColorStop(0.55, `rgba(${eColor.r},${eColor.g},${eColor.b},0.9)`);
       eGrad.addColorStop(1, `rgba(${Math.max(eColor.r-40,0)},${Math.max(eColor.g-40,0)},${Math.max(eColor.b-40,0)},0.8)`);
       ctx.shadowBlur = 10;
       ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.7)`;
       ctx.fillStyle = eGrad;
-      ctx.beginPath(); ctx.arc(0, 0, ERAD, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, ERAD, ERAD*0.75, 0, 0, Math.PI * 2); ctx.fill();
 
-      // 2 swirling energy arcs (less than player's 3, different spiral)
+      // 2 swirling energy arcs
       for (let i = 0; i < 2; i++) {
         const rot = (eTime * 1.6 + ei * 2.3 + i * Math.PI) % (Math.PI * 2);
         ctx.save();
@@ -3506,19 +3506,19 @@ ctx.restore();
         for (let a = 0; a < Math.PI; a += 0.15) {
           const r = (ERAD - 4) * (1 - a / Math.PI);
           const x = Math.cos(a * 2.5) * r;
-          const y = Math.sin(a * 2.5) * r;
+          const y = Math.sin(a * 2.5) * r * 0.75;
           if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.stroke();
         ctx.restore();
       }
 
-      // 4 inner particles
+      // inner particles
       for (let i = 0; i < 4; i++) {
         const pAngle = (eTime * 1.2 + ei * 0.8 + i * (Math.PI * 2 / 4)) % (Math.PI * 2);
         const pR = 4 + Math.sin(eTime * 3 + i * 1.5) * 2.5;
         const px = Math.cos(pAngle) * pR;
-        const py = Math.sin(pAngle) * pR;
+        const py = Math.sin(pAngle) * pR * 0.6;
         ctx.shadowBlur = 6;
         ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.9)`;
         ctx.fillStyle = `rgba(${Math.min(eColor.r+100,255)},${Math.min(eColor.g+100,255)},${Math.min(eColor.b+100,255)},0.85)`;
@@ -3530,9 +3530,9 @@ ctx.restore();
       ctx.shadowColor = `rgba(${eColor.r},${eColor.g},${eColor.b},0.6)`;
       ctx.strokeStyle = `rgba(${eColor.r},${eColor.g},${eColor.b},0.7)`;
       ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(0, 0, ERAD, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, 0, ERAD, ERAD*0.75, 0, 0, Math.PI * 2); ctx.stroke();
 
-      // Glowing "eyes" — two small bright dots
+      // Glowing "eyes"
       for (let side = -1; side <= 1; side += 2) {
         ctx.shadowBlur = 5;
         ctx.shadowColor = `rgba(${Math.min(eColor.r+120,255)},${Math.min(eColor.g+120,255)},${Math.min(eColor.b+120,255)},1)`;
@@ -3545,36 +3545,36 @@ ctx.restore();
 
   // --- DYNAMIC BOSS RENDERING ---
   if (inDungeon && world.boss) {
-    const bx = world.boss.x - cx, by = world.boss.y - cy;
+    const screen = worldToIso(world.boss.x, world.boss.y);
     const BRAD = 50;
     const bossColor = hexToRgb(b.enemy);
     ctx.save();
-    ctx.translate(bx, by);
+    ctx.translate(screen.x, screen.y - 8);
 
     if (world.boss.hitTimer > 0) {
       ctx.shadowBlur = 40;
       ctx.shadowColor = "rgba(255,255,255,0.95)";
       ctx.fillStyle = "#fff";
-      ctx.beginPath(); ctx.arc(0, 0, BRAD + 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, BRAD + 6, (BRAD + 6) * 0.8, 0, 0, Math.PI * 2); ctx.fill();
     } else {
       // Outer glow pulse
       const bPulse = Math.sin(eTime * 2.5) * 4 + BRAD + 6;
       ctx.shadowBlur = 28;
       ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.7)`;
       ctx.fillStyle = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.1)`;
-      ctx.beginPath(); ctx.arc(0, 0, bPulse, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, bPulse * 1.1, bPulse * 0.8, 0, 0, Math.PI * 2); ctx.fill();
 
       // Radial gradient body
-      const bGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, BRAD);
+      const bGrad = ctx.createRadialGradient(-BRAD*0.3, -BRAD*0.5, 0, 0, 0, BRAD);
       bGrad.addColorStop(0, `rgba(${Math.min(bossColor.r+60,255)},${Math.min(bossColor.g+60,255)},${Math.min(bossColor.b+60,255)},0.95)`);
       bGrad.addColorStop(0.5, `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.9)`);
       bGrad.addColorStop(1, `rgba(${Math.max(bossColor.r-50,0)},${Math.max(bossColor.g-50,0)},${Math.max(bossColor.b-50,0)},0.8)`);
       ctx.shadowBlur = 20;
       ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.8)`;
       ctx.fillStyle = bGrad;
-      ctx.beginPath(); ctx.arc(0, 0, BRAD, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, BRAD, BRAD * 0.8, 0, 0, Math.PI * 2); ctx.fill();
 
-      // 4 swirling energy arcs (more than enemies, bigger spirals)
+      // 4 swirling energy arcs
       for (let i = 0; i < 4; i++) {
         const rot = (eTime * 1.2 + i * (Math.PI / 2)) % (Math.PI * 2);
         ctx.save();
@@ -3588,31 +3588,19 @@ ctx.restore();
         for (let a = 0; a < Math.PI * 1.3; a += 0.12) {
           const r = (BRAD - 12) * (1 - a / (Math.PI * 1.3));
           const x = Math.cos(a * 2) * r;
-          const y = Math.sin(a * 2) * r;
-          if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.8)`;
-        ctx.beginPath();
-        for (let a = 0; a < Math.PI * 1.3; a += 0.12) {
-          const r = (BRAD - 12) * (1 - a / (Math.PI * 1.3));
-          const x = Math.cos(a * 2) * r;
-          const y = Math.sin(a * 2) * r;
+          const y = Math.sin(a * 2) * r * 0.8;
           if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.stroke();
         ctx.restore();
       }
 
-      // 6 inner particles
+      // inner particles
       for (let i = 0; i < 6; i++) {
         const pAngle = (eTime * 1.0 + i * (Math.PI * 2 / 6)) % (Math.PI * 2);
         const pR = 14 + Math.sin(eTime * 2.5 + i * 1.2) * 10;
         const px = Math.cos(pAngle) * pR;
-        const py = Math.sin(pAngle) * pR;
+        const py = Math.sin(pAngle) * pR * 0.8;
         ctx.shadowBlur = 8;
         ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},1)`;
         ctx.fillStyle = `rgba(${Math.min(bossColor.r+100,255)},${Math.min(bossColor.g+100,255)},${Math.min(bossColor.b+100,255)},0.9)`;
@@ -3624,13 +3612,13 @@ ctx.restore();
       ctx.shadowColor = `rgba(${bossColor.r},${bossColor.g},${bossColor.b},0.8)`;
       ctx.strokeStyle = `rgba(${Math.min(bossColor.r+40,255)},${Math.min(bossColor.g+40,255)},${Math.min(bossColor.b+40,255)},0.85)`;
       ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(0, 0, BRAD, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, 0, BRAD, BRAD*0.8, 0, 0, Math.PI * 2); ctx.stroke();
 
       // 3 spark highlights orbiting near the edge
       for (let i = 0; i < 3; i++) {
         const sAngle = (eTime * 3.5 + i * (Math.PI * 2 / 3)) % (Math.PI * 2);
         const sx = Math.cos(sAngle) * (BRAD - 4);
-        const sy = Math.sin(sAngle) * (BRAD - 4);
+        const sy = Math.sin(sAngle) * (BRAD - 4) * 0.8;
         ctx.shadowBlur = 10;
         ctx.shadowColor = `rgba(${Math.min(bossColor.r+120,255)},${Math.min(bossColor.g+120,255)},${Math.min(bossColor.b+120,255)},1)`;
         ctx.fillStyle = `rgba(${Math.min(bossColor.r+140,255)},${Math.min(bossColor.g+140,255)},${Math.min(bossColor.b+140,255)},0.95)`;
@@ -3639,10 +3627,10 @@ ctx.restore();
     }
     ctx.restore();
 
-    // Boss HP bar
-    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(bx - 52, by - 82, 104, 14);
-    ctx.fillStyle = "#333"; ctx.fillRect(bx - 50, by - 80, 100, 10);
-    ctx.fillStyle = "#ff0000"; ctx.fillRect(bx - 50, by - 80, (world.boss.hp / world.boss.max) * 100, 10);
+    // Boss HP bar (projected position)
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(screen.x - 52, screen.y - 92, 104, 14);
+    ctx.fillStyle = "#333"; ctx.fillRect(screen.x - 50, screen.y - 90, 100, 10);
+    ctx.fillStyle = "#ff0000"; ctx.fillRect(screen.x - 50, screen.y - 90, (world.boss.hp / world.boss.max) * 100, 10);
   }
 
   // DRAW SHOTS (positions updated in update(dt))
@@ -3654,8 +3642,9 @@ ctx.restore();
     const glowColor = b.wpnGlow || "#00e6ff";
     
     let ang = Math.atan2(s.dy, s.dx);
+    const screen = worldToIso(s.x, s.y);
     ctx.save();
-    ctx.translate(s.x - cx, s.y - cy);
+    ctx.translate(screen.x, screen.y - 4);
     ctx.rotate(ang);
 
     // Draw glow outline first for visibility
@@ -3731,7 +3720,8 @@ ctx.restore();
 
   // DROPS (unchanged visuals)
   drops.forEach(d => {
-    let dx = d.x - cx, dy = d.y - cy;
+    const screen = worldToIso(d.x, d.y);
+    let dx = screen.x, dy = screen.y;
     if (d.type === "hp") {
       // replicate player orb appearance exactly (blue gradient, pulse, hit flash)
       const time = Date.now() / 1000;
@@ -3740,7 +3730,7 @@ ctx.restore();
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
       ctx.save();
-      ctx.translate(dx, dy);
+      ctx.translate(dx, dy - 4);
 
       // outer glow/pulse matching player
       ctx.shadowBlur = isIOS ? 8 : 18;
@@ -3772,7 +3762,7 @@ ctx.restore();
     } else if (d.type === "Sword") {
       ctx.save();
       ctx.shadowBlur = 20; ctx.shadowColor = "rgba(0,180,255,0.75)";
-      ctx.translate(dx, dy);
+      ctx.translate(dx, dy - 6);
       ctx.rotate(Math.PI / 4);
       ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.lineJoin = "round";
       ctx.beginPath(); 
@@ -3787,7 +3777,7 @@ ctx.restore();
 
     } else if (d.type === "Bow") {
       ctx.save();
-      ctx.translate(dx, dy);
+      ctx.translate(dx, dy - 6);
       ctx.rotate(-Math.PI / 4);
 
       // Draw metallic bow limbs with chrome/silver gradient effect
