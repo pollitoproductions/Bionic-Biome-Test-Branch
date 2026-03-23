@@ -3324,7 +3324,6 @@ function draw() {
       ctx.fillStyle = exploredTile ? grassColor : "rgba(10,10,12,0.9)";
       ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.fill();
       if (exploredTile) {
->>>>>>> dddf998 (Isometric corner camera, 45° tilt, persistent exploration lighting, arrow rotation fix)
         let noise = ((x * 13 + y * 23) % 10) / 10;
         if (noise > 0.6) {
            ctx.fillStyle = "rgba(0,0,0,0.1)";
@@ -3971,16 +3970,16 @@ ctx.restore();
   ctx.shadowBlur = 0;
 
   // Draw isometric tiles on minimap (only explored tiles are visible)
-  const halfW = mmS / 2;
-  const halfH = mmS / 3; // match worldToIso vertical scale for consistent perspective
+  const mmHalfW = mmS / 2;
+  const mmHalfH = mmS / 3; // match worldToIso vertical scale for consistent perspective
   const baseX = mmX + mmW / 2;
   const baseY = mmY + 12; // small top padding
 
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
       if (!explored[y][x]) continue;
-      const cxTile = baseX + (x - y) * halfW;
-      const cyTile = baseY + (x + y) * halfH;
+      const cxTile = baseX + (x - y) * mmHalfW;
+      const cyTile = baseY + (x + y) * mmHalfH;
       if (world.grid[y][x] === 1) ctx.fillStyle = b.wall;
       else ctx.fillStyle = adjustColor(b.grass || '#2a2a2a', 0.30, 0.12);
       ctx.beginPath();
@@ -3996,8 +3995,8 @@ ctx.restore();
     let ex = Math.floor(world.entrance.x / TILE);
     let ey = Math.floor(world.entrance.y / TILE);
     if (explored[ey] && explored[ey][ex]) {
-      const enIsoX = baseX + (ex - ey) * halfW;
-      const enIsoY = baseY + (ex + ey) * halfH;
+      const enIsoX = baseX + (ex - ey) * mmHalfW;
+      const enIsoY = baseY + (ex + ey) * mmHalfH;
       ctx.fillStyle = b.enemy;
       ctx.beginPath(); ctx.arc(enIsoX, enIsoY, 4, 0, Math.PI*2); ctx.fill();
     }
@@ -4005,8 +4004,8 @@ ctx.restore();
 
   // Draw player on minimap (projected)
   const pTileX = player.x / TILE, pTileY = player.y / TILE;
-  const pIsoX = baseX + (pTileX - pTileY) * halfW;
-  const pIsoY = baseY + (pTileX + pTileY) * halfH;
+  const pIsoX = baseX + (pTileX - pTileY) * mmHalfW;
+  const pIsoY = baseY + (pTileX + pTileY) * mmHalfH;
   ctx.fillStyle = "#00ffff"; ctx.beginPath(); ctx.arc(pIsoX, pIsoY, 3.5, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1.0;
 }
 
