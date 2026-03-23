@@ -3291,11 +3291,16 @@ function draw() {
     const center = worldToIso((x + 0.5) * TILE, (y + 0.5) * TILE);
     const drawX = center.x, drawY = center.y;
 
-    // diamond corners
-    const p1 = { x: drawX, y: drawY - halfH };
-    const p2 = { x: drawX + halfW, y: drawY };
-    const p3 = { x: drawX, y: drawY + halfH };
-    const p4 = { x: drawX - halfW, y: drawY };
+    // diamond corners (compute named corners then rotate 180° for barrier orientation)
+    const pTop = { x: drawX, y: drawY - halfH };
+    const pRight = { x: drawX + halfW, y: drawY };
+    const pBottom = { x: drawX, y: drawY + halfH };
+    const pLeft = { x: drawX - halfW, y: drawY };
+    // Rotate diamond 180° so barriers face flipped (fixes upside-down appearance)
+    const p1 = pBottom; // was top
+    const p2 = pLeft;   // was right
+    const p3 = pTop;    // was bottom
+    const p4 = pRight;  // was left
 
     // Darken unexplored tiles; keep explored tiles lit like the minimap
     const exploredTile = explored[y] && explored[y][x];
